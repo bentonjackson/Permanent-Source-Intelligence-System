@@ -1,0 +1,499 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleKey {
+  admin
+  rep
+}
+
+enum PipelineStage {
+  NEW
+  RESEARCH_BUILDER
+  READY_TO_BID
+  CONTACTED
+  QUOTED
+  WON
+  LOST
+  NOT_A_FIT
+}
+
+enum OpportunityType {
+  VACANT_LOT_NEW_BUILD
+  SUBDIVISION_LOT
+  PRE_ISSUANCE_HOME
+  ISSUED_NEW_HOME
+  OTHER_NON_PRIORITY
+}
+
+enum BuildReadiness {
+  EARLY_SIGNAL
+  PLAN_SUBMITTED
+  PERMIT_REVIEW
+  PERMIT_ISSUED
+}
+
+enum BidStatus {
+  NOT_REVIEWED
+  RESEARCHING_BUILDER
+  READY_TO_CONTACT
+  CONTACTED
+  BID_REQUESTED
+  QUOTED
+  WON
+  LOST
+  NOT_A_FIT
+}
+
+enum ProjectSegment {
+  SINGLE_FAMILY
+  MULTIFAMILY
+  COMMERCIAL
+}
+
+enum PermitClassification {
+  NEW_RESIDENTIAL_CONSTRUCTION
+  SINGLE_FAMILY_HOME
+  MULTI_FAMILY
+  ACCESSORY_BUILDING
+  REMODEL_REPAIR
+  COMMERCIAL
+  UNKNOWN_NEEDS_REVIEW
+}
+
+enum SourceSyncStatus {
+  idle
+  running
+  success
+  warning
+  failed
+}
+
+model Organization {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  memberships Membership[]
+  sources     Source[]
+  builders    Builder[]
+  companies   Company[]
+  leads       Lead[]
+  contacts    Contact[]
+  activities  Activity[]
+  notes       Note[]
+  territories Territory[]
+  watchlists  Watchlist[]
+  plotOpportunities PlotOpportunity[]
+}
+
+model Membership {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clerkUserId    String
+  email          String
+  displayName    String
+  role           RoleKey
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  assignedLeads  Lead[]
+  plotOpportunities PlotOpportunity[]
+}
+
+model County {
+  id            String         @id @default(cuid())
+  name          String         @unique
+  state         String         @default("IA")
+  cities        City[]
+  jurisdictions Jurisdiction[]
+  properties    Property[]
+}
+
+model City {
+  id            String         @id @default(cuid())
+  name          String
+  countyId      String
+  county        County         @relation(fields: [countyId], references: [id], onDelete: Restrict)
+  jurisdictions Jurisdiction[]
+  properties    Property[]
+
+  @@unique([name, countyId])
+}
+
+model Jurisdiction {
+  id            String    @id @default(cuid())
+  name          String
+  countyId      String
+  county        County    @relation(fields: [countyId], references: [id], onDelete: Restrict)
+  cityId        String?
+  city          City?     @relation(fields: [cityId], references: [id], onDelete: SetNull)
+  sources       Source[]
+  permits       Permit[]
+
+  @@unique([name, countyId])
+}
+
+model Territory {
+  id             String         @id @default(cuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  slug           String
+  type           String
+  radiusMiles    Float?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  rules          TerritoryRule[]
+
+  @@unique([organizationId, slug])
+}
+
+model TerritoryRule {
+  id          String    @id @default(cuid())
+  territoryId String
+  territory   Territory @relation(fields: [territoryId], references: [id], onDelete: Cascade)
+  ruleType    String
+  ruleValue   String
+}
+
+model Source {
+  id                    String           @id @default(cuid())
+  organizationId        String
+  organization          Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jurisdictionId        String?
+  jurisdiction          Jurisdiction?    @relation(fields: [jurisdictionId], references: [id], onDelete: SetNull)
+  name                  String
+  slug                  String
+  sourceType            String
+  parserType            String
+  sourceUrl             String
+  active                Boolean          @default(true)
+  authRequired          Boolean          @default(false)
+  syncFrequency         String
+  sourceConfidenceScore Int              @default(0)
+  sourceFreshnessScore  Int              @default(0)
+  syncStatus            SourceSyncStatus @default(idle)
+  lastSuccessfulSync    DateTime?
+  rawRecords            RawRecord[]
+  syncRuns              SourceSyncRun[]
+  plotOpportunities     PlotOpportunity[]
+
+  @@unique([organizationId, slug])
+}
+
+model SourceSyncRun {
+  id             String           @id @default(cuid())
+  sourceId       String
+  source         Source           @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  startedAt      DateTime         @default(now())
+  finishedAt     DateTime?
+  status         SourceSyncStatus @default(running)
+  fetchedCount   Int              @default(0)
+  normalizedCount Int             @default(0)
+  dedupedCount   Int              @default(0)
+  message        String?
+  logs           SourceSyncLog[]
+}
+
+model SourceSyncLog {
+  id        String        @id @default(cuid())
+  runId     String
+  run       SourceSyncRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  level     String
+  message   String
+  createdAt DateTime      @default(now())
+}
+
+model RawRecord {
+  id          String   @id @default(cuid())
+  sourceId    String
+  source      Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  runId       String?
+  externalId  String
+  payload     Json
+  dedupeHash  String
+  fetchedAt   DateTime
+  createdAt   DateTime @default(now())
+  permitId    String?
+  permit      Permit?  @relation(fields: [permitId], references: [id], onDelete: SetNull)
+
+  @@unique([sourceId, dedupeHash])
+}
+
+model Builder {
+  id                  String         @id @default(cuid())
+  organizationId      String
+  organization        Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  companyId           String?
+  company             Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  name                String
+  normalizedName      String
+  confidenceScore     Int            @default(0)
+  builderHeatScore    Int            @default(0)
+  activeProperties    Int            @default(0)
+  totalLandValue      Decimal?       @db.Decimal(12, 2)
+  totalImprovementValue Decimal?     @db.Decimal(12, 2)
+  aliases             BuilderAlias[]
+  permits             Permit[]
+  leads               Lead[]
+  contacts            Contact[]
+  plotOpportunities   PlotOpportunity[]
+
+  @@unique([organizationId, normalizedName])
+}
+
+model BuilderAlias {
+  id        String  @id @default(cuid())
+  builderId String
+  builder   Builder @relation(fields: [builderId], references: [id], onDelete: Cascade)
+  rawName   String
+}
+
+model Company {
+  id                String           @id @default(cuid())
+  organizationId    String
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  legalName         String
+  normalizedName    String
+  phone             String?
+  email             String?
+  website           String?
+  mailingAddress    String?
+  builders          Builder[]
+  contacts          Contact[]
+  enrichmentResults EnrichmentResult[]
+  leads             Lead[]
+
+  @@unique([organizationId, normalizedName])
+}
+
+model Contact {
+  id                String         @id @default(cuid())
+  organizationId    String
+  organization      Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  builderId         String?
+  builder           Builder?       @relation(fields: [builderId], references: [id], onDelete: SetNull)
+  companyId         String?
+  company           Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  fullName          String?
+  email             String?
+  phone             String?
+  roleTitle         String?
+  publicProfileUrl  String?
+}
+
+model Property {
+  id           String    @id @default(cuid())
+  address      String
+  cityId       String?
+  city         City?     @relation(fields: [cityId], references: [id], onDelete: SetNull)
+  countyId     String?
+  county       County?   @relation(fields: [countyId], references: [id], onDelete: SetNull)
+  state        String    @default("IA")
+  zip          String?
+  subdivision  String?
+  lotNumber    String?
+  parcel       Parcel?
+  permits      Permit[]
+  notes        Note[]
+  activities   Activity[]
+  plotOpportunities PlotOpportunity[]
+}
+
+model PlotOpportunity {
+  id                   String            @id @default(cuid())
+  organizationId       String
+  organization         Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  propertyId           String?
+  property             Property?         @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  builderId            String?
+  builder              Builder?          @relation(fields: [builderId], references: [id], onDelete: SetNull)
+  sourceId             String?
+  source               Source?           @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  assignedMembershipId String?
+  assignedMembership   Membership?       @relation(fields: [assignedMembershipId], references: [id], onDelete: SetNull)
+  address              String?
+  city                 String?
+  county               String?
+  subdivision          String?
+  parcelNumber         String?
+  lotNumber            String?
+  builderName          String?
+  likelyCompanyName    String?
+  permitNumber         String?
+  sourceName           String?
+  sourceJurisdiction   String?
+  sourceUrl            String?
+  classification       PermitClassification @default(UNKNOWN_NEEDS_REVIEW)
+  projectSegment       ProjectSegment    @default(SINGLE_FAMILY)
+  opportunityType      OpportunityType
+  buildReadiness       BuildReadiness
+  bidStatus            BidStatus         @default(NOT_REVIEWED)
+  vacancyConfidence    Int               @default(0)
+  opportunityScore     Int               @default(0)
+  contactStatus        String?
+  nextAction           String?
+  nextFollowUpDate     DateTime?
+  inquiredAt           DateTime?
+  needsFollowUp        Boolean           @default(false)
+  suggestedFollowUpDate DateTime?
+  secondFollowUpDate   DateTime?
+  followedUpOn         DateTime?
+  notes                Json?
+  closedAt             DateTime?
+  signalDate           DateTime
+  sourceEvidence       Json?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  @@index([organizationId, opportunityScore])
+}
+
+model Parcel {
+  id           String    @id @default(cuid())
+  propertyId   String    @unique
+  property     Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  parcelNumber String    @unique
+}
+
+model Permit {
+  id                    String               @id @default(cuid())
+  jurisdictionId        String?
+  jurisdiction          Jurisdiction?        @relation(fields: [jurisdictionId], references: [id], onDelete: SetNull)
+  propertyId            String?
+  property              Property?            @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  builderId             String?
+  builder               Builder?             @relation(fields: [builderId], references: [id], onDelete: SetNull)
+  permitNumber          String
+  permitType            String
+  permitSubtype         String?
+  permitStatus          String
+  applicationDate       DateTime?
+  issueDate             DateTime?
+  projectDescription    String?
+  estimatedProjectValue Decimal?             @db.Decimal(12, 2)
+  landValue             Decimal?             @db.Decimal(12, 2)
+  improvementValue      Decimal?             @db.Decimal(12, 2)
+  ownerName             String?
+  contractorName        String?
+  developerName         String?
+  sourceUrl             String
+  classification        PermitClassification @default(UNKNOWN_NEEDS_REVIEW)
+  dedupeHash            String               @unique
+  rawRecords            RawRecord[]
+
+  @@unique([permitNumber, sourceUrl])
+}
+
+model Lead {
+  id                     String             @id @default(cuid())
+  organizationId         String
+  organization           Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  builderId              String?
+  builder                Builder?           @relation(fields: [builderId], references: [id], onDelete: SetNull)
+  companyId              String?
+  company                Company?           @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  stage                  PipelineStage      @default(NEW)
+  assignedMembershipId   String?
+  assignedMembership     Membership?        @relation(fields: [assignedMembershipId], references: [id], onDelete: SetNull)
+  outreachCount          Int                @default(0)
+  callCount              Int                @default(0)
+  emailCount             Int                @default(0)
+  lastContactDate        DateTime?
+  nextFollowUpDate       DateTime?
+  interestStatus         String?
+  score                  Int                @default(0)
+  clusterOpportunityScore Int               @default(0)
+  activities             Activity[]
+  notes                  Note[]
+  tags                   LeadTag[]
+  history                LeadStageHistory[]
+  watchlists             Watchlist[]
+  scoreSnapshots         LeadScoreSnapshot[]
+}
+
+model LeadStageHistory {
+  id        String        @id @default(cuid())
+  leadId    String
+  lead      Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  stage     PipelineStage
+  changedAt DateTime      @default(now())
+  note      String?
+}
+
+model Activity {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadId         String
+  lead           Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  propertyId     String?
+  property       Property?    @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  type           String
+  occurredAt     DateTime     @default(now())
+  description    String
+}
+
+model Note {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadId         String?
+  lead           Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  propertyId     String?
+  property       Property?    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  body           String
+  createdAt      DateTime     @default(now())
+}
+
+model Tag {
+  id    String    @id @default(cuid())
+  name  String    @unique
+  leads LeadTag[]
+}
+
+model LeadTag {
+  leadId String
+  tagId  String
+  lead   Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tag    Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([leadId, tagId])
+}
+
+model Watchlist {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leadId         String?
+  lead           Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  watchType      String
+  watchValue     String
+}
+
+model EnrichmentResult {
+  id             String       @id @default(cuid())
+  companyId      String
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  provider       String
+  payload        Json
+  confidence     Int
+  refreshedAt    DateTime     @default(now())
+}
+
+model LeadScoreSnapshot {
+  id                     String   @id @default(cuid())
+  leadId                 String
+  lead                   Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  score                  Int
+  clusterOpportunityScore Int
+  reasons                Json
+  createdAt              DateTime @default(now())
+}

@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 0 0% 97%;
+  --foreground: 0 0% 7%;
+  --card: 0 0% 100%;
+  --muted: 0 0% 94%;
+  --border: 0 0% 86%;
+  --accent: 0 72% 94%;
+  --primary: 0 73% 44%;
+  --secondary: 0 0% 16%;
+  --destructive: 0 73% 44%;
+  --font-sans: "IBM Plex Sans";
+}
+
+* {
+  @apply border-border;
+}
+
+body {
+  @apply bg-background text-foreground antialiased;
+  background-image:
+    radial-gradient(circle at 0% 0%, rgba(127, 29, 29, 0.12), transparent 22%),
+    radial-gradient(circle at 100% 0%, rgba(38, 38, 38, 0.12), transparent 24%),
+    linear-gradient(180deg, #fafafa 0%, #f1f1f1 100%);
+}
+
+a {
+  @apply text-inherit no-underline;
+}
