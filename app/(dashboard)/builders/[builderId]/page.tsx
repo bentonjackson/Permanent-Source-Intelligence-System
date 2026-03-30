@@ -29,15 +29,18 @@ export default async function BuilderDetailPage({ params }: { params: { builderI
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <Card>
           <CardHeader>
-            <CardTitle>Active lots and permits</CardTitle>
+            <div>
+              <p className="eyebrow-label">Architectural Record</p>
+              <CardTitle className="mt-2">Active lots and permits</CardTitle>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {builder.properties.map((property) => (
-              <div key={property.id} className="rounded-2xl border bg-slate-50 p-4">
+              <div key={property.id} className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4">
                 <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                   <div>
-                    <p className="font-medium text-slate-900">{property.address}</p>
-                    <p className="text-sm text-slate-600">
+                    <p className="font-medium text-white">{property.address}</p>
+                    <p className="text-sm text-white/56">
                       {property.city}, {property.county} {property.subdivision ? `• ${property.subdivision}` : ""}
                     </p>
                   </div>
@@ -45,11 +48,11 @@ export default async function BuilderDetailPage({ params }: { params: { builderI
                 </div>
                 <div className="mt-4 space-y-3">
                   {property.permits.map((permit) => (
-                    <div key={permit.id} className="rounded-2xl border bg-white p-4">
+                    <div key={permit.id} className="rounded-[14px] border border-white/10 bg-[#171a1f] p-4">
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <div>
-                          <p className="font-medium">{permit.permitNumber}</p>
-                          <p className="text-sm text-slate-600">{permit.permitType}</p>
+                          <p className="font-medium text-white">{permit.permitNumber}</p>
+                          <p className="text-sm text-white/56">{permit.permitType}</p>
                         </div>
                         <div className="flex gap-2">
                           <Badge tone="slate">{permit.classification}</Badge>
@@ -71,9 +74,12 @@ export default async function BuilderDetailPage({ params }: { params: { builderI
         <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Builder summary</CardTitle>
+              <div>
+                <p className="eyebrow-label">Dossier</p>
+                <CardTitle className="mt-2">Builder summary</CardTitle>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm text-slate-600">
+            <CardContent className="space-y-3 text-sm text-white/58">
               <p>Preferred sales name: {entity.displayName}</p>
               <p>Legal entity: {builder.legalEntityName ?? "Unknown"}</p>
               <p>Aliases: {builder.aliases.length ? builder.aliases.join(", ") : "None stored"}</p>
@@ -103,42 +109,51 @@ export default async function BuilderDetailPage({ params }: { params: { builderI
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Entity matches</CardTitle>
+              <div>
+                <p className="eyebrow-label">Identity resolution</p>
+                <CardTitle className="mt-2">Entity matches</CardTitle>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm text-slate-600">
+            <CardContent className="space-y-3 text-sm text-white/58">
               {builder.entityMatches.length ? builder.entityMatches.slice(0, 6).map((match) => (
-                <div key={match.id} className="rounded-2xl border bg-slate-50 p-3">
-                  <p className="font-medium text-slate-900">
+                <div key={match.id} className="rounded-[14px] border border-white/10 bg-white/[0.03] p-3">
+                  <p className="font-medium text-white">
                     {match.preferredSalesName ?? match.rawSourceName}
                   </p>
                   <p className="mt-1">{match.sourceLabel} • {match.matchStrategy}</p>
                   <p className="mt-1">Role: {match.roleType.replaceAll("_", " ")} • confidence {match.roleConfidenceScore}</p>
-                  <p className="mt-1 text-slate-500">{match.rationale}</p>
+                  <p className="mt-1 text-white/38">{match.rationale}</p>
                 </div>
               )) : <p>No enrichment matches stored yet.</p>}
             </CardContent>
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Enrichment audit</CardTitle>
+              <div>
+                <p className="eyebrow-label">Audit trail</p>
+                <CardTitle className="mt-2">Enrichment audit</CardTitle>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm text-slate-600">
+            <CardContent className="space-y-3 text-sm text-white/58">
               {builder.enrichmentAudit.length ? builder.enrichmentAudit.slice(0, 8).map((item) => (
-                <div key={item.id} className="rounded-2xl border bg-slate-50 p-3">
-                  <p className="font-medium text-slate-900">
+                <div key={item.id} className="rounded-[14px] border border-white/10 bg-white/[0.03] p-3">
+                  <p className="font-medium text-white">
                     {item.fieldName ?? item.provider}: {item.fieldValue ?? "No value"}
                   </p>
                   <p className="mt-1">{item.sourceLabel ?? item.provider} • confidence {item.confidence}</p>
-                  <p className="mt-1 text-slate-500">{item.rationale ?? "No rationale stored."}</p>
+                  <p className="mt-1 text-white/38">{item.rationale ?? "No rationale stored."}</p>
                 </div>
               )) : <p>No enrichment audit rows stored yet.</p>}
             </CardContent>
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Open opportunities</CardTitle>
+              <div>
+                <p className="eyebrow-label">Linked pipeline</p>
+                <CardTitle className="mt-2">Open opportunities</CardTitle>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-2 text-sm text-slate-600">
+            <CardContent className="space-y-2 text-sm text-white/58">
               {data.opportunities
                 .filter((opportunity) => opportunity.builderId === builder.id)
                 .map((opportunity) => (
@@ -158,9 +173,9 @@ function formatBand(value: string) {
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border bg-slate-50 p-3">
-      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 font-medium text-slate-900">{value}</p>
+    <div className="rounded-[14px] border border-white/10 bg-white/[0.03] p-3">
+      <p className="data-label">{label}</p>
+      <p className="mt-2 font-medium text-white">{value}</p>
     </div>
   );
 }

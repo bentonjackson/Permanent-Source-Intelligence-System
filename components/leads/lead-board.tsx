@@ -12,16 +12,21 @@ export function LeadBoard({ builders }: { builders: BuilderRecord[] }) {
         return (
           <Card key={stage} className="min-h-[280px]">
             <CardHeader>
-              <CardTitle className="text-base">{stage}</CardTitle>
+              <div>
+                <p className="eyebrow-label">Stage</p>
+                <CardTitle className="mt-2 text-base">{stage}</CardTitle>
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
               {stageBuilders.length === 0 ? (
-                <div className="rounded-2xl border border-dashed bg-slate-50 p-4 text-sm text-slate-500">No grouped leads in this stage.</div>
+                <div className="rounded-[16px] border border-dashed border-white/14 bg-white/[0.03] p-4 text-sm text-white/46">
+                  No grouped leads in this stage.
+                </div>
               ) : (
                 stageBuilders.map((builder) => (
-                  <div key={builder.id} className="rounded-2xl border bg-slate-50 p-4">
-                    <p className="font-medium text-slate-900">{builder.name}</p>
-                    <p className="mt-1 text-sm text-slate-600">
+                  <div key={builder.id} className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4">
+                    <p className="font-serif text-lg tracking-[-0.03em] text-white">{builder.name}</p>
+                    <p className="mt-1 text-sm text-white/56">
                       {builder.activeProperties} active plots • {builder.assignedRep}
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">

@@ -54,38 +54,41 @@ export function ManualImportPanel() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Manual CSV / XLSX import</CardTitle>
+        <div>
+          <p className="eyebrow-label">Fallback ingest</p>
+          <CardTitle className="mt-2">Manual CSV / XLSX import</CardTitle>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-white/56">
           Use this when a county source changes format or when operations needs a fallback import. Preview first, then write into the same deduplicated database pipeline.
         </p>
         <input
           type="file"
           accept=".csv,.xlsx,.xls"
           onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-          className="block w-full text-sm text-slate-700"
+          className="block w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-white/72 file:mr-3 file:rounded-md file:border-0 file:bg-red-500/12 file:px-3 file:py-2 file:text-[11px] file:font-semibold file:uppercase file:tracking-[0.2em] file:text-red-100"
         />
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => submit("preview")} disabled={!canSubmit || loading !== null}>
             {loading === "preview" ? "Previewing..." : "Preview import"}
           </Button>
-          <Button className="bg-neutral-950 hover:bg-neutral-800" onClick={() => submit("import")} disabled={!canSubmit || loading !== null}>
+          <Button onClick={() => submit("import")} disabled={!canSubmit || loading !== null}>
             {loading === "import" ? "Importing..." : "Import to database"}
           </Button>
         </div>
         {result ? (
-          <div className="rounded-2xl border bg-slate-50 p-4 text-sm text-slate-700">
+          <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4 text-sm text-white/68">
             <p>{result.rows} row(s) read • {result.normalized} normalized record(s)</p>
             {typeof result.imported === "number" ? (
-              <p className="mt-2 font-medium">{result.imported} record(s) written into the database.</p>
+              <p className="mt-2 font-medium text-white">{result.imported} record(s) written into the database.</p>
             ) : null}
             {result.preview?.length ? (
               <div className="mt-3 space-y-2">
                 {result.preview.map((opportunity) => (
-                  <div key={opportunity.id} className="rounded-xl border bg-white p-3">
-                    <p className="font-medium text-slate-900">{opportunity.address}</p>
-                    <p className="text-slate-600">{opportunity.builderName ?? "Builder needs research"} • {opportunity.county}</p>
+                  <div key={opportunity.id} className="rounded-[14px] border border-white/10 bg-[#171a1f] p-3">
+                    <p className="font-medium text-white">{opportunity.address}</p>
+                    <p className="text-white/56">{opportunity.builderName ?? "Builder needs research"} • {opportunity.county}</p>
                   </div>
                 ))}
               </div>

@@ -56,22 +56,26 @@ export default async function DashboardPage({
       <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr_0.8fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Top opportunities</CardTitle>
+            <div>
+              <p className="eyebrow-label">Queue Priority</p>
+              <CardTitle className="mt-2">Top opportunities</CardTitle>
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {plotQueue.slice(0, 5).map((opportunity) => (
-              <div key={opportunity.id} className="rounded-2xl border bg-slate-50 p-4">
+              <div key={opportunity.id} className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4">
                 {(() => {
                   const entity = getOpportunityEntityPresentation(opportunity);
 
                   return (
                     <>
-                      <p className="font-medium text-slate-900">{opportunity.address || opportunity.parcelNumber || "Parcel lead"}</p>
-                      <p className="mt-1 text-sm text-slate-600">
+                      <p className="font-serif text-lg tracking-[-0.03em] text-white">{entity.displayName}</p>
+                      <p className="mt-2 text-sm text-white/84">{opportunity.address || opportunity.parcelNumber || "Parcel lead"}</p>
+                      <p className="mt-1 text-sm text-white/54">
                         {entity.displayName} • {opportunity.county}
                       </p>
-                      {entity.relatedEntityName ? <p className="mt-1 text-sm text-slate-500">Related Entity: {entity.relatedEntityName}</p> : null}
-                      <p className="mt-2 text-sm text-slate-700">{opportunity.nextAction}</p>
+                      {entity.relatedEntityName ? <p className="mt-1 text-sm text-white/42">Related entity: {entity.relatedEntityName}</p> : null}
+                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-red-200">{opportunity.nextAction}</p>
                     </>
                   );
                 })()}
@@ -81,13 +85,16 @@ export default async function DashboardPage({
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Hottest builders</CardTitle>
+            <div>
+              <p className="eyebrow-label">Builder Heat</p>
+              <CardTitle className="mt-2">Hottest builders</CardTitle>
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {builders.slice(0, 5).map((builder) => (
-              <div key={builder.id} className="rounded-2xl border bg-slate-50 p-4">
-                <p className="font-medium text-slate-900">{getBuilderEntityPresentation(builder).displayName}</p>
-                <p className="mt-1 text-sm text-slate-600">
+              <div key={builder.id} className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4">
+                <p className="font-serif text-lg tracking-[-0.03em] text-white">{getBuilderEntityPresentation(builder).displayName}</p>
+                <p className="mt-2 text-sm text-white/56">
                   {builder.openOpportunities} open properties • {builder.counties.join(", ")}
                 </p>
               </div>
@@ -96,22 +103,25 @@ export default async function DashboardPage({
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Most active counties</CardTitle>
+            <div>
+              <p className="eyebrow-label">Corridor Activity</p>
+              <CardTitle className="mt-2">Most active counties</CardTitle>
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {mostActiveCounties.map(([county, count]) => (
-              <div key={county} className="rounded-2xl border bg-slate-50 p-4">
-                <p className="font-medium text-slate-900">{county}</p>
-                <p className="mt-1 text-sm text-slate-600">{count} open opportunity records</p>
+              <div key={county} className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4">
+                <p className="font-serif text-lg tracking-[-0.03em] text-white">{county}</p>
+                <p className="mt-2 text-sm text-white/56">{count} open opportunity records</p>
               </div>
             ))}
             {followUpsDue.length ? (
-              <div className="rounded-2xl border bg-white p-4">
-                <p className="text-xs uppercase tracking-wide text-slate-500">Next follow-up due</p>
-                <p className="mt-2 text-sm font-medium text-slate-900">
+              <div className="rounded-[16px] border border-white/10 bg-white/[0.04] p-4">
+                <p className="eyebrow-label">Next follow-up due</p>
+                <p className="mt-3 font-serif text-lg tracking-[-0.03em] text-white">
                   {getOpportunityEntityPresentation(followUpsDue[0]).displayName}
                 </p>
-                <p className="mt-1 text-sm text-slate-600">{formatDate(followUpsDue[0].suggestedFollowUpDate)}</p>
+                <p className="mt-2 text-sm text-white/56">{formatDate(followUpsDue[0].suggestedFollowUpDate)}</p>
               </div>
             ) : null}
           </CardContent>

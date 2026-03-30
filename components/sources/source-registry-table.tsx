@@ -46,14 +46,14 @@ export function SourceRegistryTable({ sources }: { sources: SourceRecord[] }) {
   return (
     <div className="space-y-4">
       {message ? (
-        <div className="rounded-2xl border bg-white px-4 py-3 text-sm text-slate-700">{message}</div>
+        <div className="rounded-[16px] border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/72">{message}</div>
       ) : null}
       {sources.map((source) => (
         <Card key={source.id}>
           <CardHeader>
             <div>
               <CardTitle>{source.name}</CardTitle>
-              <p className="mt-2 text-sm text-slate-600">
+              <p className="mt-2 text-sm text-white/56">
                 {source.city}, {source.county} • {source.sourceType}
               </p>
             </div>
@@ -68,7 +68,7 @@ export function SourceRegistryTable({ sources }: { sources: SourceRecord[] }) {
               {source.active ? (
                 <Button
                   variant="outline"
-                  className="h-8 rounded-full"
+                  className="h-8"
                   disabled={pendingSourceId === source.id}
                   onClick={() => rerunSource(source)}
                 >
@@ -92,16 +92,16 @@ export function SourceRegistryTable({ sources }: { sources: SourceRecord[] }) {
               <Info label="Open Reviews" value={String(source.openReviewCount ?? 0)} />
               <Info label="Source URL" value={source.sourceUrl} />
             </div>
-            <div className="rounded-2xl border bg-slate-50 p-4">
-              <p className="text-sm font-medium text-slate-900">Recent sync logs</p>
+            <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4">
+              <p className="eyebrow-label">Recent sync logs</p>
               <div className="mt-3 space-y-3">
                 {source.logs.length ? source.logs.map((log) => (
-                  <div key={`${source.id}-${log.timestamp}`} className="rounded-2xl border bg-white p-3">
-                    <p className="text-xs uppercase tracking-wide text-slate-500">{log.level}</p>
-                    <p className="mt-1 text-sm text-slate-700">{log.message}</p>
+                  <div key={`${source.id}-${log.timestamp}`} className="rounded-[14px] border border-white/10 bg-[#171a1f] p-3">
+                    <p className="data-label">{log.level}</p>
+                    <p className="mt-2 text-sm text-white/72">{log.message}</p>
                   </div>
                 )) : (
-                  <div className="rounded-2xl border bg-white p-3 text-sm text-slate-600">
+                  <div className="rounded-[14px] border border-white/10 bg-[#171a1f] p-3 text-sm text-white/56">
                     No sync logs yet. Run the background sync to populate this source.
                   </div>
                 )}
@@ -144,9 +144,9 @@ function statusTone(source: SourceRecord): "slate" | "amber" | "green" | "blue" 
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border bg-slate-50 p-4">
-      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
+    <div className="rounded-[14px] border border-white/10 bg-white/[0.03] p-4">
+      <p className="data-label">{label}</p>
+      <p className="mt-2 text-sm font-medium text-white">{value}</p>
     </div>
   );
 }

@@ -12,13 +12,23 @@ export function Badge({
   children: ReactNode;
 }) {
   const tones = {
-    default: "bg-neutral-950 text-white",
-    green: "bg-neutral-900 text-white",
-    amber: "bg-neutral-200 text-neutral-900",
-    blue: "bg-red-100 text-red-900",
-    slate: "bg-neutral-100 text-neutral-700",
-    red: "bg-red-600 text-white"
+    default: "border-white/14 bg-white/[0.05] text-white/86",
+    green: "border-emerald-400/20 bg-emerald-400/10 text-emerald-100",
+    amber: "border-amber-300/18 bg-amber-200/10 text-amber-100",
+    blue: "border-red-400/22 bg-red-500/10 text-red-100",
+    slate: "border-white/10 bg-white/[0.035] text-white/62",
+    red: "border-red-500/32 bg-red-500/16 text-red-50"
   };
 
-  return <span className={cn("inline-flex rounded-full px-2.5 py-1 text-xs font-medium", tones[tone], className)}>{children}</span>;
+  return (
+    <span
+      className={cn(
+        "inline-flex rounded-md border px-2.5 py-1 font-sans text-[10px] font-semibold uppercase tracking-[0.22em]",
+        tones[tone],
+        className
+      )}
+    >
+      {children}
+    </span>
+  );
 }

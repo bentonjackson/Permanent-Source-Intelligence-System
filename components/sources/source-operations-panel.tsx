@@ -87,13 +87,16 @@ export function SourceOperationsPanel() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Run background sync</CardTitle>
+        <div>
+          <p className="eyebrow-label">Operations</p>
+          <CardTitle className="mt-2">Run background sync</CardTitle>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-white/56">
           Trigger the active official-source connectors and write fresh results into the database.
         </p>
-        <Button className="bg-neutral-950 hover:bg-neutral-800" onClick={runSync} disabled={running}>
+        <Button onClick={runSync} disabled={running}>
           {running ? "Running sync..." : "Sync active sources"}
         </Button>
         <Button variant="outline" onClick={runEnrichment} disabled={enriching}>
@@ -102,7 +105,7 @@ export function SourceOperationsPanel() {
         <Button variant="outline" onClick={runDiagnostics} disabled={diagnosing}>
           {diagnosing ? "Running diagnostics..." : "Run diagnostics"}
         </Button>
-        {message ? <p className="text-sm text-slate-700">{message}</p> : null}
+        {message ? <p className="text-sm text-white/68">{message}</p> : null}
       </CardContent>
     </Card>
   );

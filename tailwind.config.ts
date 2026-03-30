@@ -22,14 +22,18 @@ const config: Config = {
         destructive: "hsl(var(--destructive))"
       },
       fontFamily: {
-        sans: ["var(--font-sans)", "ui-sans-serif", "system-ui"]
+        sans: ["var(--font-sans)", "ui-sans-serif", "system-ui"],
+        serif: ["var(--font-serif)", "ui-serif", "Georgia", "serif"]
       },
       backgroundImage: {
         "grain-gradient":
-          "radial-gradient(circle at top left, rgba(127,29,29,0.16), transparent 28%), radial-gradient(circle at top right, rgba(38,38,38,0.14), transparent 24%), linear-gradient(180deg, rgba(250,250,250,1) 0%, rgba(241,241,241,1) 100%)"
+          "radial-gradient(circle at top left, rgba(127,29,29,0.16), transparent 28%), radial-gradient(circle at top right, rgba(38,38,38,0.14), transparent 24%), linear-gradient(180deg, rgba(250,250,250,1) 0%, rgba(241,241,241,1) 100%)",
+        "architect-grid":
+          "linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)"
       },
       boxShadow: {
-        panel: "0 18px 45px -28px rgba(15, 23, 42, 0.45)"
+        panel: "0 24px 55px -34px rgba(0, 0, 0, 0.78)",
+        "panel-strong": "0 34px 70px -34px rgba(0, 0, 0, 0.9)"
       }
     }
   },

@@ -40,15 +40,16 @@ export function BuilderList({ builders }: { builders: BuilderRecord[] }) {
           <Card key={builder.id} className="overflow-hidden">
             <button
               type="button"
-              className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left"
+              className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left transition-colors duration-200 hover:bg-white/[0.03]"
               onClick={() => toggleBuilder(builder.id)}
             >
               <div className="min-w-0">
-                <CardTitle>{entity.displayName}</CardTitle>
+                <p className="eyebrow-label">Builder dossier</p>
+                <CardTitle className="mt-2 text-[1.35rem]">{entity.displayName}</CardTitle>
                 {entity.relatedEntityName ? (
-                  <p className="mt-2 text-sm text-slate-600">Related Entity: {entity.relatedEntityName}</p>
+                  <p className="mt-2 text-sm text-white/42">Related entity: {entity.relatedEntityName}</p>
                 ) : null}
-                <p className="mt-2 text-sm text-slate-600">
+                <p className="mt-3 text-sm text-white/56">
                   {builder.openOpportunities} open lots to work across {builder.counties.join(", ")}
                 </p>
               </div>
@@ -60,11 +61,11 @@ export function BuilderList({ builders }: { builders: BuilderRecord[] }) {
                     {builder.contactQualityTier.replaceAll("_", " ")}
                   </Badge>
                 </div>
-                <ChevronDown className={`h-5 w-5 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                <ChevronDown className={`h-5 w-5 shrink-0 text-white/56 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
               </div>
             </button>
             {isOpen ? (
-              <CardContent className="grid gap-6 border-t lg:grid-cols-[1.2fr_0.8fr]">
+              <CardContent className="grid gap-6 border-t border-white/10 lg:grid-cols-[1.2fr_0.8fr] animate-[panel-in_220ms_ease-out]">
                 <div>
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <Stat label="Open Lots" value={String(builder.openOpportunities)} />
@@ -74,11 +75,11 @@ export function BuilderList({ builders }: { builders: BuilderRecord[] }) {
                   </div>
                   <div className="mt-4 space-y-3">
                     {builder.properties.map((property) => (
-                      <div key={property.id} className="rounded-2xl border bg-slate-50 p-4">
+                      <div key={property.id} className="rounded-[14px] border border-white/10 bg-white/[0.03] p-4">
                         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                           <div>
-                            <p className="font-medium text-slate-900">{property.address}</p>
-                            <p className="text-sm text-slate-600">
+                            <p className="font-medium text-white">{property.address}</p>
+                            <p className="text-sm text-white/56">
                               {property.city}, {property.county}
                               {property.subdivision ? ` • ${property.subdivision}` : ""}
                             </p>
@@ -95,9 +96,10 @@ export function BuilderList({ builders }: { builders: BuilderRecord[] }) {
                     ))}
                   </div>
                 </div>
-                <div className="rounded-2xl border bg-slate-50 p-4">
-                  <p className="text-sm font-medium text-slate-900">Rep-ready summary</p>
-                  <div className="mt-3 space-y-2 text-sm text-slate-600">
+                <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4">
+                  <p className="eyebrow-label">Builder summary</p>
+                  <p className="mt-3 font-serif text-xl tracking-[-0.03em] text-white">Rep-ready dossier</p>
+                  <div className="mt-4 space-y-2 text-sm text-white/58">
                     <p>Preferred sales name: {entity.displayName}</p>
                     <p>Legal entity: {builder.legalEntityName ?? "Unknown"}</p>
                     <p>Aliases: {builder.aliases.length ? builder.aliases.join(", ") : "None stored"}</p>
@@ -116,7 +118,7 @@ export function BuilderList({ builders }: { builders: BuilderRecord[] }) {
                   </div>
                   <Link
                     href={`/builders/${builder.id}`}
-                    className="mt-6 inline-flex text-sm font-medium text-red-700"
+                    className="text-link mt-6 inline-flex"
                   >
                     Open builder view
                   </Link>
@@ -136,9 +138,9 @@ function formatBand(value: BuilderRecord["contactQualityBand"]) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border bg-white p-4">
-      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-sm font-semibold">{value}</p>
+    <div className="rounded-[14px] border border-white/10 bg-white/[0.03] p-4">
+      <p className="data-label">{label}</p>
+      <p className="mt-2 text-sm font-semibold text-white">{value}</p>
     </div>
   );
 }

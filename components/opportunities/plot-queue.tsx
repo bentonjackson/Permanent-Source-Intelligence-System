@@ -236,16 +236,16 @@ export function PlotQueue({
   return (
     <div className="space-y-4 overflow-x-hidden">
       {error ? (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-4 text-sm text-red-700">{error}</CardContent>
+        <Card className="border-red-500/30 bg-red-500/10">
+          <CardContent className="p-4 text-sm text-red-100">{error}</CardContent>
         </Card>
       ) : null}
-      <Card className="border-dashed">
+      <Card className="overflow-hidden">
         <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
           <div className="min-w-0">
-            <p className="text-xs uppercase tracking-wide text-slate-500">County</p>
+            <p className="eyebrow-label">County</p>
             <select
-              className="mt-2 h-9 w-full rounded-xl border bg-white px-3 text-sm"
+              className="mt-2 h-10 w-full rounded-md border border-white/12 bg-white/[0.04] px-3 text-sm text-white"
               value={selectedCounty}
               onChange={(event) => updateFilter("county", event.target.value, COUNTIES_NEAR_ME_LABEL)}
             >
@@ -257,9 +257,9 @@ export function PlotQueue({
             </select>
           </div>
           <div className="min-w-0">
-            <p className="text-xs uppercase tracking-wide text-slate-500">City</p>
+            <p className="eyebrow-label">City</p>
             <select
-              className="mt-2 h-9 w-full rounded-xl border bg-white px-3 text-sm"
+              className="mt-2 h-10 w-full rounded-md border border-white/12 bg-white/[0.04] px-3 text-sm text-white"
               value={resolvedSelectedCity}
               onChange={(event) => updateFilter("city", event.target.value, "All cities")}
             >
@@ -271,9 +271,9 @@ export function PlotQueue({
             </select>
           </div>
           <div className="min-w-0">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Jurisdiction</p>
+            <p className="eyebrow-label">Jurisdiction</p>
             <select
-              className="mt-2 h-9 w-full rounded-xl border bg-white px-3 text-sm"
+              className="mt-2 h-10 w-full rounded-md border border-white/12 bg-white/[0.04] px-3 text-sm text-white"
               value={selectedJurisdiction}
               onChange={(event) => updateFilter("jurisdiction", event.target.value, "All jurisdictions")}
             >
@@ -285,9 +285,9 @@ export function PlotQueue({
             </select>
           </div>
           <div className="min-w-0">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Territory</p>
+            <p className="eyebrow-label">Territory</p>
             <select
-              className="mt-2 h-9 w-full rounded-xl border bg-white px-3 text-sm"
+              className="mt-2 h-10 w-full rounded-md border border-white/12 bg-white/[0.04] px-3 text-sm text-white"
               value={selectedTerritory}
               onChange={(event) => updateFilter("territory", event.target.value, "All territories")}
             >
@@ -299,7 +299,7 @@ export function PlotQueue({
             </select>
           </div>
           <div className="min-w-0">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Project Type</p>
+            <p className="eyebrow-label">Project Type</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <FilterButton active={segmentFilter === "all"} onClick={() => setSegmentFilter("all")}>
                 All
@@ -316,7 +316,7 @@ export function PlotQueue({
             </div>
           </div>
           <div className="min-w-0">
-            <p className="text-xs uppercase tracking-wide text-slate-500">Sort By</p>
+            <p className="eyebrow-label">Sort By</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <FilterButton active={sortBy === "score"} onClick={() => setSortBy("score")}>
                 Highest Score
@@ -337,22 +337,22 @@ export function PlotQueue({
             <Card key={countyGroup.county} className="overflow-hidden">
               <button
                 type="button"
-                className="flex w-full items-center justify-between gap-4 bg-neutral-950 px-6 py-5 text-left text-white"
+                className="flex w-full items-center justify-between gap-4 border-b border-white/10 bg-white/[0.02] px-6 py-5 text-left text-white transition-colors duration-200 hover:bg-white/[0.04]"
                 onClick={() => toggleCounty(countyGroup.county)}
               >
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <MapPinned className="h-4 w-4 text-red-400" />
-                    <span className="text-lg font-semibold">{countyGroup.county} County</span>
+                    <MapPinned className="h-4 w-4 text-red-300" />
+                    <span className="font-serif text-[1.35rem] tracking-[-0.04em]">{countyGroup.county} County</span>
                   </div>
-                  <p className="text-sm text-neutral-300">
+                  <p className="text-sm text-white/52">
                     {countyGroup.builders.length} builder group{countyGroup.builders.length === 1 ? "" : "s"} • {countyOpenParcels} open parcel{countyOpenParcels === 1 ? "" : "s"}
                   </p>
                 </div>
-                <ChevronDown className={`h-5 w-5 transition-transform ${isCountyOpen ? "rotate-180" : ""}`} />
+                <ChevronDown className={`h-5 w-5 text-white/60 transition-transform duration-200 ${isCountyOpen ? "rotate-180" : ""}`} />
               </button>
               {isCountyOpen ? (
-                <CardContent className="space-y-4 p-4 md:p-6">
+                <CardContent className="space-y-4 p-4 md:p-6 animate-[panel-in_220ms_ease-out]">
                   {countyGroup.builders.map((builderGroup) => {
                     const isBuilderOpen = openBuilders[builderGroup.key] ?? false;
                     const topScore = Math.max(...builderGroup.items.map((item) => item.opportunityScore));
@@ -361,20 +361,20 @@ export function PlotQueue({
                       .find(Boolean);
 
                     return (
-                      <div key={builderGroup.key} className="rounded-3xl border border-neutral-200 bg-white shadow-sm">
+                      <div key={builderGroup.key} className="rounded-[16px] border border-white/10 bg-white/[0.035] shadow-panel">
                         <button
                           type="button"
-                          className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left"
+                          className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left transition-colors duration-200 hover:bg-white/[0.03]"
                           onClick={() => toggleBuilder(builderGroup.key)}
                         >
-                          <div>
-                            <p className="text-base font-semibold text-slate-950">
+                          <div className="min-w-0">
+                            <p className="truncate font-serif text-[1.15rem] tracking-[-0.03em] text-white">
                               {builderGroup.name}
                               {previewEntity ? (
-                                <span className="ml-2 font-normal text-slate-500">{previewEntity}</span>
+                                <span className="ml-2 font-sans text-sm font-normal text-white/42">{previewEntity}</span>
                               ) : null}
                             </p>
-                            <p className="mt-1 text-sm text-slate-600">
+                            <p className="mt-2 text-sm text-white/52">
                               {builderGroup.items.length} active propert{builderGroup.items.length === 1 ? "y" : "ies"} • best score {topScore}
                             </p>
                           </div>
@@ -382,29 +382,31 @@ export function PlotQueue({
                             <Badge tone={builderGroup.items.some((item) => item.preferredSalesName) ? "slate" : "amber"}>
                               {builderGroup.items.some((item) => item.preferredSalesName) ? "Sales-ready identity" : "Research contact"}
                             </Badge>
-                            <ChevronDown className={`h-5 w-5 transition-transform ${isBuilderOpen ? "rotate-180" : ""}`} />
+                            <ChevronDown className={`h-5 w-5 text-white/60 transition-transform duration-200 ${isBuilderOpen ? "rotate-180" : ""}`} />
                           </div>
                         </button>
                         {isBuilderOpen ? (
-                          <div className="space-y-3 border-t border-neutral-200 p-4">
+                          <div className="space-y-3 border-t border-white/10 p-4 animate-[panel-in_220ms_ease-out]">
                             {builderGroup.items.map((opportunity) => {
                               const entity = getOpportunityEntityPresentation(opportunity);
 
                               return (
-                                <div key={opportunity.id} className="rounded-2xl border bg-slate-50 p-4">
-                                  <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                                <div key={opportunity.id} className="rounded-[16px] border border-white/10 bg-[#171a1f] p-4 transition-all duration-200 hover:-translate-y-[1px] hover:border-white/14 hover:bg-[#1a1d22] hover:shadow-panel">
+                                  <div className="flex min-w-0 flex-col gap-4 border-b border-white/8 pb-4 lg:flex-row lg:items-start lg:justify-between">
                                     <div className="min-w-0">
-                                      <p className="text-base font-semibold text-slate-950">
+                                      <p className="font-serif text-[1.22rem] tracking-[-0.03em] text-white">
+                                        {entity.displayName}
+                                      </p>
+                                      <p className="mt-2 text-base font-medium text-white/84">
                                         {opportunity.address || opportunity.parcelNumber || "Unmapped lot"}
                                       </p>
-                                      <p className="mt-1 text-sm text-slate-600">
+                                      <p className="mt-1 text-sm text-white/52">
                                         {opportunity.city}, {opportunity.county}
                                         {opportunity.subdivision ? ` • ${opportunity.subdivision}` : ""}
                                         {opportunity.lotNumber ? ` • ${opportunity.lotNumber}` : ""}
                                       </p>
-                                      <p className="mt-2 text-sm font-medium text-slate-900">{entity.displayName}</p>
                                       {entity.relatedEntityName ? (
-                                        <p className="text-sm text-slate-600">Related Entity: {entity.relatedEntityName}</p>
+                                        <p className="mt-2 text-sm text-white/38">Landowner / related entity: {entity.relatedEntityName}</p>
                                       ) : null}
                                     </div>
                                     <div className="flex flex-wrap gap-2">
@@ -421,14 +423,14 @@ export function PlotQueue({
                                   <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                                     <Info label="Parcel / Lot" value={[opportunity.parcelNumber, opportunity.lotNumber].filter(Boolean).join(" • ") || "N/A"} />
                                     <Info label="Value" value={formatCurrency(opportunity.estimatedProjectValue ?? opportunity.improvementValue ?? opportunity.landValue)} />
-                                    <Info label="Permit Signal" value={opportunity.opportunityType.replaceAll("_", " ")} />
-                                    <Info label="Stage" value={opportunity.bidStatus.replaceAll("_", " ")} />
-                                    <Info label="Signal Date" value={formatDate(opportunity.signalDate)} />
+                                    <Info label="Signal" value={opportunity.opportunityType.replaceAll("_", " ")} />
+                                    <Info label="Contact Tier" value={formatQualityTier(opportunity.contactQualityTier)} />
+                                    <Info label="Entity Confidence" value={`${opportunity.entityConfidenceScore}`} />
                                   </div>
                                   <div className="mt-4 grid gap-4 2xl:grid-cols-[minmax(0,1fr)_300px]">
                                     <div className="space-y-4">
-                                      <div className="rounded-2xl border bg-white p-4">
-                                        <p className="text-xs uppercase tracking-wide text-slate-500">Best contact information</p>
+                                      <div className="rounded-[14px] border border-white/10 bg-white/[0.03] p-4">
+                                        <p className="eyebrow-label">Best contact information</p>
                                         <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                                           <Info label="Preferred sales name" value={entity.displayName} />
                                           <Info label="Legal entity" value={opportunity.legalEntityName ?? "Unknown"} />
@@ -444,32 +446,32 @@ export function PlotQueue({
                                         </div>
                                         <div className="mt-4 flex flex-wrap gap-4 text-sm">
                                           {opportunity.phone ? (
-                                            <a className="font-medium text-red-700" href={`tel:${opportunity.phone}`}>
+                                            <a className="text-link" href={`tel:${opportunity.phone}`}>
                                               Call {opportunity.phone}
                                             </a>
                                           ) : null}
                                           {opportunity.email ? (
-                                            <a className="font-medium text-red-700" href={`mailto:${opportunity.email}`}>
+                                            <a className="text-link" href={`mailto:${opportunity.email}`}>
                                               Email contact
                                             </a>
                                           ) : null}
                                           {opportunity.website ? (
-                                            <a className="font-medium text-red-700" href={opportunity.website} target="_blank" rel="noreferrer">
+                                            <a className="text-link" href={opportunity.website} target="_blank" rel="noreferrer">
                                               Open company site
                                             </a>
                                           ) : null}
                                           {opportunity.sourceUrl ? (
-                                            <a className="font-medium text-red-700" href={opportunity.sourceUrl} target="_blank" rel="noreferrer">
+                                            <a className="text-link" href={opportunity.sourceUrl} target="_blank" rel="noreferrer">
                                               Open official source
                                             </a>
                                           ) : null}
                                         </div>
                                         {opportunity.aliases.length ? (
-                                          <p className="mt-3 text-sm text-slate-600">Aliases: {opportunity.aliases.join(", ")}</p>
+                                          <p className="mt-3 text-sm text-white/44">Aliases: {opportunity.aliases.join(", ")}</p>
                                         ) : null}
                                       </div>
-                                      <div className="rounded-2xl border bg-white p-4">
-                                        <p className="text-xs uppercase tracking-wide text-slate-500">Why it is ranked here</p>
+                                      <div className="rounded-[14px] border border-white/10 bg-white/[0.03] p-4">
+                                        <p className="eyebrow-label">Why it is ranked here</p>
                                         <div className="mt-3 flex flex-wrap gap-2">
                                           {opportunity.reasonSummary.map((reason) => (
                                             <Badge key={reason} tone="slate">
@@ -477,18 +479,17 @@ export function PlotQueue({
                                             </Badge>
                                           ))}
                                         </div>
-                                        <p className="mt-4 text-sm text-slate-700">{opportunity.nextAction}</p>
-                                        <p className="mt-3 text-xs text-slate-500">
+                                        <p className="mt-4 text-sm text-white/78">{opportunity.nextAction}</p>
+                                        <p className="mt-3 text-xs uppercase tracking-[0.18em] text-white/36">
                                           {opportunity.sourceJurisdiction} • {opportunity.sourceName} • {formatDate(opportunity.signalDate)}
                                         </p>
                                       </div>
                                     </div>
-                                    <div className="rounded-2xl border bg-white p-4">
-                                      <p className="text-xs uppercase tracking-wide text-slate-500">Rep workflow</p>
-                                      <label className="mt-3 block text-sm text-slate-700">
-                                        <span className="mb-2 block text-xs uppercase tracking-wide text-slate-500">Assign rep</span>
+                                    <div className="rounded-[14px] border border-white/10 bg-white/[0.03] p-4">
+                                      <p className="eyebrow-label">Rep workflow</p>
+                                      <label className="field-shell mt-3">
+                                        <span>Assign rep</span>
                                         <select
-                                          className="w-full rounded-xl border bg-white px-3 py-2 text-sm"
                                           value={opportunity.assignedMembershipId ?? ""}
                                           onChange={(event) => {
                                             void assignRep(opportunity.id, event.target.value || null);
@@ -503,7 +504,6 @@ export function PlotQueue({
                                       </label>
                                       <div className="mt-4 flex flex-wrap gap-2">
                                         <Button
-                                          className="bg-neutral-950 hover:bg-neutral-800"
                                           disabled={pendingKey === `move:${opportunity.id}`}
                                           onClick={() => void moveToContacted(opportunity.id, opportunity.assignedMembershipId ?? undefined)}
                                         >
@@ -511,14 +511,14 @@ export function PlotQueue({
                                         </Button>
                                         <Button
                                           variant="outline"
-                                          className="border-red-600 text-red-700 hover:bg-red-50"
+                                          className="border-red-500/32 text-red-100 hover:bg-red-500/12"
                                           disabled={pendingKey === `not-fit:${opportunity.id}`}
                                           onClick={() => void markNotFit(opportunity.id)}
                                         >
                                           Mark Not a Fit
                                         </Button>
                                       </div>
-                                      <Link href={`/opportunities/${opportunity.id}`} className="mt-4 inline-flex text-sm font-medium text-red-700">
+                                      <Link href={`/opportunities/${opportunity.id}`} className="text-link mt-5 inline-flex">
                                         Open opportunity detail
                                       </Link>
                                     </div>
@@ -538,7 +538,7 @@ export function PlotQueue({
         })
       ) : (
         <Card>
-          <CardContent className="p-6 text-sm text-slate-600">
+          <CardContent className="p-6 text-sm text-white/58">
             No database-backed opportunities matched the current county and project filters.
           </CardContent>
         </Card>
@@ -565,9 +565,9 @@ function FilterButton({
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-2xl border bg-white p-4">
-      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 break-words text-sm font-medium text-slate-900">{value}</p>
+    <div className="min-w-0 rounded-[14px] border border-white/10 bg-white/[0.03] p-4">
+      <p className="data-label">{label}</p>
+      <p className="data-value mt-2">{value}</p>
     </div>
   );
 }

@@ -13,16 +13,19 @@ export function ReviewQueuePanel({ items }: { items: ReviewQueueItemRecord[] }) 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Review Queue</CardTitle>
+        <div>
+          <p className="eyebrow-label">Ambiguity review</p>
+          <CardTitle className="mt-2">Review Queue</CardTitle>
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         {items.length ? (
           items.map((item) => (
-            <div key={item.id} className="rounded-2xl border bg-slate-50 p-4">
+            <div key={item.id} className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-900">{item.title}</p>
-                  <p className="mt-1 break-words text-sm text-slate-600">
+                  <p className="text-sm font-semibold text-white">{item.title}</p>
+                  <p className="mt-1 break-words text-sm text-white/56">
                     {item.details ?? item.builderName ?? item.sourceName ?? "Needs review"}
                   </p>
                 </div>
@@ -31,7 +34,7 @@ export function ReviewQueuePanel({ items }: { items: ReviewQueueItemRecord[] }) 
                   <Badge tone="slate">Priority {item.priority}</Badge>
                 </div>
               </div>
-              <div className="mt-3 space-y-2 text-sm text-slate-600">
+              <div className="mt-3 space-y-2 text-sm text-white/58">
                 {item.rationale ? <p className="break-words">{item.rationale}</p> : null}
                 <p>
                   Last seen {formatDate(item.lastSeenAt)}
@@ -40,7 +43,7 @@ export function ReviewQueuePanel({ items }: { items: ReviewQueueItemRecord[] }) 
                 {item.opportunityId ? (
                   <Link
                     href={`/opportunities/${item.opportunityId}`}
-                    className="text-sm font-medium text-red-700 underline-offset-4 hover:underline"
+                    className="text-link"
                   >
                     Open record
                   </Link>
@@ -49,7 +52,7 @@ export function ReviewQueuePanel({ items }: { items: ReviewQueueItemRecord[] }) 
             </div>
           ))
         ) : (
-          <div className="rounded-2xl border bg-slate-50 p-4 text-sm text-slate-600">
+          <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4 text-sm text-white/56">
             No open review items. Connector failures, weak identities, and missing-contact gaps will appear here automatically.
           </div>
         )}

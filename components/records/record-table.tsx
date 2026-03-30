@@ -20,11 +20,14 @@ export function RecordTable({ builders }: { builders: BuilderRecord[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Permit and Property Explorer</CardTitle>
+        <div>
+          <p className="eyebrow-label">Explorer</p>
+          <CardTitle className="mt-2">Permit and Property Explorer</CardTitle>
+        </div>
       </CardHeader>
       <CardContent className="overflow-x-auto">
         <table className="min-w-full text-left text-sm">
-          <thead className="text-slate-500">
+          <thead className="border-b border-white/10 text-white/42">
             <tr>
               <th className="pb-3">Builder</th>
               <th className="pb-3">Address</th>
@@ -38,11 +41,11 @@ export function RecordTable({ builders }: { builders: BuilderRecord[] }) {
           </thead>
           <tbody>
             {records.map((record) => (
-              <tr key={record.permit.id} className="border-t align-top">
-                <td className="py-4 font-medium">{record.builder}</td>
+              <tr key={record.permit.id} className="border-t border-white/8 align-top text-white/76">
+                <td className="py-4 font-medium text-white">{record.builder}</td>
                 <td className="py-4">
                   <p>{record.address}</p>
-                  <p className="text-slate-500">{record.city}</p>
+                  <p className="text-white/42">{record.city}</p>
                 </td>
                 <td className="py-4">{record.county}</td>
                 <td className="py-4">

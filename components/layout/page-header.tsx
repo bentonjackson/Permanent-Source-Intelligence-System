@@ -13,19 +13,27 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-4 rounded-[24px] border bg-white/75 p-5 shadow-panel backdrop-blur-sm lg:flex-row lg:items-end lg:justify-between">
-      <div>
-        <Badge tone="red">{eyebrow}</Badge>
-        <h2 className="mt-3 text-[1.9rem] font-semibold tracking-tight text-slate-950">{title}</h2>
-        <p className="mt-2 max-w-3xl text-sm text-slate-600">{description}</p>
-      </div>
-      <div className="flex flex-wrap items-center gap-3">
-        {actions ?? (
-          <>
-            <Button variant="outline">Saved Territory</Button>
-            <Button>Run Sync</Button>
-          </>
-        )}
+    <div className="surface-panel panel-grid rounded-[22px] border px-5 py-6 lg:px-7 lg:py-7">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div className="max-w-4xl">
+          <p className="engraved-label">{eyebrow}</p>
+          <h2 className="mt-4 max-w-4xl font-serif text-[2.25rem] leading-[0.96] tracking-[-0.04em] text-white md:text-[3rem]">
+            {title}
+          </h2>
+          <div className="mt-4 h-px w-24 bg-red-500/55" />
+          <p className="mt-4 max-w-3xl text-sm leading-6 text-white/62 lg:text-[15px]">{description}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Badge tone="slate" className="hidden lg:inline-flex">
+            Architectural Operations System
+          </Badge>
+          {actions ?? (
+            <>
+              <Button variant="outline">Saved Territory</Button>
+              <Button>Run Sync</Button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

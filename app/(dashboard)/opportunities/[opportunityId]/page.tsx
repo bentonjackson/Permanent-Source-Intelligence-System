@@ -31,7 +31,10 @@ export default async function OpportunityDetailPage({ params }: { params: { oppo
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <Card>
           <CardHeader>
-            <CardTitle>Lot and source evidence</CardTitle>
+            <div>
+              <p className="eyebrow-label">Field Record</p>
+              <CardTitle className="mt-2">Lot and source evidence</CardTitle>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -41,8 +44,8 @@ export default async function OpportunityDetailPage({ params }: { params: { oppo
               <Info label="Readiness" value={opportunity.buildReadiness.replaceAll("_", " ")} />
               <Info label="Signal Date" value={formatDate(opportunity.signalDate)} />
             </div>
-            <div className="rounded-2xl border bg-slate-50 p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Sales contact identity</p>
+            <div className="rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
+              <p className="eyebrow-label">Sales contact identity</p>
               <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <Info label="Preferred sales name" value={opportunityEntity.displayName} />
                 <Info label="Legal entity" value={opportunity.legalEntityName ?? "Unknown"} />
@@ -54,14 +57,14 @@ export default async function OpportunityDetailPage({ params }: { params: { oppo
                 <Info label="Email / Website" value={opportunity.email ?? opportunity.website ?? "Needs research"} />
               </div>
               {opportunityEntity.relatedEntityName ? (
-                <p className="mt-3 text-sm text-slate-600">Related Entity: {opportunityEntity.relatedEntityName}</p>
+                <p className="mt-3 text-sm text-white/56">Related Entity: {opportunityEntity.relatedEntityName}</p>
               ) : null}
               {opportunity.aliases.length ? (
-                <p className="mt-2 text-sm text-slate-600">Aliases: {opportunity.aliases.join(", ")}</p>
+                <p className="mt-2 text-sm text-white/48">Aliases: {opportunity.aliases.join(", ")}</p>
               ) : null}
             </div>
-            <div className="rounded-2xl border bg-slate-50 p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Why it is in the queue</p>
+            <div className="rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
+              <p className="eyebrow-label">Why it is in the queue</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {opportunity.reasonSummary.map((reason) => (
                   <Badge key={reason} tone="slate">
@@ -70,37 +73,43 @@ export default async function OpportunityDetailPage({ params }: { params: { oppo
                 ))}
               </div>
             </div>
-            <div className="rounded-2xl border bg-slate-50 p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Next step</p>
-              <p className="mt-2 text-sm text-slate-800">{opportunity.nextAction}</p>
+            <div className="rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
+              <p className="eyebrow-label">Next step</p>
+              <p className="mt-2 text-sm text-white/84">{opportunity.nextAction}</p>
             </div>
           </CardContent>
         </Card>
         <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Bid workflow</CardTitle>
+              <div>
+                <p className="eyebrow-label">Bid workflow</p>
+                <CardTitle className="mt-2">Current status</CardTitle>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm text-slate-600">
-              <p>Status: {opportunity.bidStatus.replaceAll("_", " ")}</p>
-              <p>Assigned rep: {opportunity.assignedRep}</p>
-              <p>When inquired: {formatDate(opportunity.inquiredAt)}</p>
-              <p>Last contact: {formatDate(opportunity.lastContactedAt ?? opportunity.contactedAt)}</p>
-              <p>Next follow-up: {formatDate(opportunity.nextFollowUpAt ?? opportunity.nextFollowUpDate)}</p>
-              <p>Interest: {opportunity.interestStatus.replaceAll("_", " ")}</p>
-              <p>Outcome: {opportunity.outcomeStatus.replaceAll("_", " ")}</p>
-              <p>Contact status: {opportunity.contactStatus}</p>
+            <CardContent className="space-y-3 text-sm text-white/62">
+              <InfoRow label="Status" value={opportunity.bidStatus.replaceAll("_", " ")} />
+              <InfoRow label="Assigned rep" value={opportunity.assignedRep} />
+              <InfoRow label="When inquired" value={formatDate(opportunity.inquiredAt)} />
+              <InfoRow label="Last contact" value={formatDate(opportunity.lastContactedAt ?? opportunity.contactedAt)} />
+              <InfoRow label="Next follow-up" value={formatDate(opportunity.nextFollowUpAt ?? opportunity.nextFollowUpDate)} />
+              <InfoRow label="Interest" value={opportunity.interestStatus.replaceAll("_", " ")} />
+              <InfoRow label="Outcome" value={opportunity.outcomeStatus.replaceAll("_", " ")} />
+              <InfoRow label="Contact status" value={opportunity.contactStatus} />
             </CardContent>
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Stored contacts</CardTitle>
+              <div>
+                <p className="eyebrow-label">People</p>
+                <CardTitle className="mt-2">Stored contacts</CardTitle>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm text-slate-600">
+            <CardContent className="space-y-3 text-sm text-white/62">
               {opportunity.contacts.length ? (
                 opportunity.contacts.map((contact) => (
-                  <div key={contact.id} className="rounded-2xl border bg-slate-50 p-3">
-                    <p className="font-medium text-slate-900">
+                  <div key={contact.id} className="rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
+                    <p className="font-medium text-white">
                       {contact.fullName ?? "Unnamed contact"}
                       {contact.isPrimary ? " • Primary" : ""}
                     </p>
@@ -116,13 +125,16 @@ export default async function OpportunityDetailPage({ params }: { params: { oppo
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Recent activity</CardTitle>
+              <div>
+                <p className="eyebrow-label">History</p>
+                <CardTitle className="mt-2">Recent activity</CardTitle>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm text-slate-600">
+            <CardContent className="space-y-3 text-sm text-white/62">
               {opportunity.activities.length ? (
                 opportunity.activities.slice(0, 6).map((activity) => (
-                  <div key={activity.id} className="rounded-2xl border bg-slate-50 p-3">
-                    <p className="font-medium text-slate-900">
+                  <div key={activity.id} className="rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
+                    <p className="font-medium text-white">
                       {activity.activityType.replaceAll("_", " ")} • {formatDate(activity.occurredAt)}
                     </p>
                     <p>{activity.contactName ?? activity.outcome ?? "No outcome recorded"}</p>
@@ -136,25 +148,34 @@ export default async function OpportunityDetailPage({ params }: { params: { oppo
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Builder context</CardTitle>
+              <div>
+                <p className="eyebrow-label">Builder context</p>
+                <CardTitle className="mt-2">Resolved identity</CardTitle>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm text-slate-600">
-              <p>Name: {builderEntity?.displayName ?? opportunityEntity.displayName}</p>
-              <p>Legal entity: {builder?.legalEntityName ?? opportunity.legalEntityName ?? "Unknown"}</p>
-              <p>Role type: {builder?.roleType?.replaceAll("_", " ") ?? opportunity.roleType.replaceAll("_", " ")}</p>
-              <p>Contact quality: {builder?.contactQualityTier?.replaceAll("_", " ") ?? opportunity.contactQualityTier.replaceAll("_", " ")}</p>
-              <p>Entity confidence: {builder?.entityConfidenceScore ?? opportunity.entityConfidenceScore}</p>
-              <p>Email: {builder?.contact.email ?? "Needs research"}</p>
-              <p>Phone: {builder?.contact.phone ?? "Needs research"}</p>
-              <p>Website: {builder?.contact.website ?? "Needs research"}</p>
-              <p>Open lots: {builder?.openOpportunities ?? 1}</p>
+            <CardContent className="space-y-3 text-sm text-white/62">
+              <InfoRow label="Name" value={builderEntity?.displayName ?? opportunityEntity.displayName} />
+              <InfoRow label="Legal entity" value={builder?.legalEntityName ?? opportunity.legalEntityName ?? "Unknown"} />
+              <InfoRow label="Role type" value={builder?.roleType?.replaceAll("_", " ") ?? opportunity.roleType.replaceAll("_", " ")} />
+              <InfoRow
+                label="Contact quality"
+                value={builder?.contactQualityTier?.replaceAll("_", " ") ?? opportunity.contactQualityTier.replaceAll("_", " ")}
+              />
+              <InfoRow label="Entity confidence" value={String(builder?.entityConfidenceScore ?? opportunity.entityConfidenceScore)} />
+              <InfoRow label="Email" value={builder?.contact.email ?? "Needs research"} />
+              <InfoRow label="Phone" value={builder?.contact.phone ?? "Needs research"} />
+              <InfoRow label="Website" value={builder?.contact.website ?? "Needs research"} />
+              <InfoRow label="Open lots" value={String(builder?.openOpportunities ?? 1)} />
             </CardContent>
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Notes</CardTitle>
+              <div>
+                <p className="eyebrow-label">Internal notes</p>
+                <CardTitle className="mt-2">Notes</CardTitle>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-2 text-sm text-slate-600">
+            <CardContent className="space-y-2 text-sm text-white/62">
               {opportunity.notes.length ? (
                 opportunity.notes.map((note) => <p key={note}>• {note}</p>)
               ) : (
@@ -170,9 +191,18 @@ export default async function OpportunityDetailPage({ params }: { params: { oppo
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border bg-white p-4">
-      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-sm font-medium text-slate-900">{value}</p>
+    <div className="min-w-0 rounded-[14px] border border-white/10 bg-white/[0.03] p-4">
+      <p className="data-label">{label}</p>
+      <p className="data-value mt-2">{value}</p>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-white/8 pb-3 last:border-0 last:pb-0">
+      <p className="data-label">{label}</p>
+      <p className="max-w-[60%] text-right text-sm text-white/86">{value}</p>
     </div>
   );
 }
