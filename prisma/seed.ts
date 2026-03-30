@@ -1,19 +1,15 @@
-import {
-  PrismaClient,
-  PipelineStage,
-  RoleKey,
-  SourceSyncStatus,
-  PermitClassification,
-  OpportunityType,
-  BuildReadiness,
-  BidStatus
-} from "@prisma/client";
+import { PrismaClient, RoleKey } from "@prisma/client";
+
+import { cedarRapids75MileCounties, seededTerritories } from "../lib/geo/territories";
+import { officialSourceDefinitions } from "../lib/sources/official-sources";
 
 const prisma = new PrismaClient();
 
 async function main() {
-  const org = await prisma.organization.upsert({
-    where: { slug: "eastern-iowa-insulation" },
+  const organization = await prisma.organization.upsert({
+    where: {
+      slug: "eastern-iowa-insulation"
+    },
     update: {},
     create: {
       name: "Eastern Iowa Insulation",
@@ -21,55 +17,100 @@ async function main() {
     }
   });
 
-  const counties = ["Linn", "Johnson", "Benton", "Buchanan", "Black Hawk"];
-  const countyRecords = await Promise.all(
-    counties.map((name) =>
-      prisma.county.upsert({
-        where: { name },
-        update: {},
-        create: { name }
-      })
-    )
-  );
-
-  const linn = countyRecords.find((county) => county.name === "Linn");
-  const johnson = countyRecords.find((county) => county.name === "Johnson");
-  const blackHawk = countyRecords.find((county) => county.name === "Black Hawk");
-
-  const cedarRapids = await prisma.city.upsert({
-    where: { name_countyId: { name: "Cedar Rapids", countyId: linn!.id } },
-    update: {},
-    create: { name: "Cedar Rapids", countyId: linn!.id }
+  await prisma.leadStageHistory.deleteMany({
+    where: {
+      lead: {
+        builder: {
+          normalizedName: "hawkeye ridge"
+        }
+      }
+    }
   });
 
-  const coralville = await prisma.city.upsert({
-    where: { name_countyId: { name: "Coralville", countyId: johnson!.id } },
-    update: {},
-    create: { name: "Coralville", countyId: johnson!.id }
+  await prisma.lead.deleteMany({
+    where: {
+      builder: {
+        normalizedName: "hawkeye ridge"
+      }
+    }
   });
 
-  const waterloo = await prisma.city.upsert({
-    where: { name_countyId: { name: "Waterloo", countyId: blackHawk!.id } },
-    update: {},
-    create: { name: "Waterloo", countyId: blackHawk!.id }
+  await prisma.plotOpportunity.deleteMany({
+    where: {
+      OR: [
+        {
+          sourceId: null
+        },
+        {
+          builderName: {
+            contains: "Hawkeye",
+            mode: "insensitive"
+          }
+        },
+        {
+          address: {
+            contains: "Prairie Crest",
+            mode: "insensitive"
+          }
+        },
+        {
+          sourceName: {
+            contains: "Coralville Official Source",
+            mode: "insensitive"
+          }
+        },
+        {
+          sourceUrl: {
+            contains: "permitportal.coralville.org"
+          }
+        }
+      ]
+    }
   });
 
-  const jurisdiction = await prisma.jurisdiction.upsert({
-    where: { name_countyId: { name: "Cedar Rapids", countyId: linn!.id } },
-    update: {},
-    create: {
-      name: "Cedar Rapids",
-      countyId: linn!.id,
-      cityId: cedarRapids.id
+  await prisma.permit.deleteMany({
+    where: {
+      sourceUrl: {
+        contains: "example.gov"
+      }
+    }
+  });
+
+  await prisma.property.deleteMany({
+    where: {
+      address: {
+        contains: "Prairie Crest",
+        mode: "insensitive"
+      }
+    }
+  });
+
+  await prisma.builder.deleteMany({
+    where: {
+      normalizedName: "hawkeye ridge"
+    }
+  });
+
+  await prisma.company.deleteMany({
+    where: {
+      normalizedName: "hawkeye ridge"
+    }
+  });
+
+  await prisma.source.deleteMany({
+    where: {
+      slug: "cedar-rapids-building-services"
     }
   });
 
   await prisma.membership.upsert({
-    where: { id: "seed-admin-membership" },
+    where: {
+      id: "seed-admin-membership"
+    },
     update: {},
     create: {
       id: "seed-admin-membership",
-      organizationId: org.id,
+      organizationId: organization.id,
       clerkUserId: "user_demo_admin",
       email: "admin@easterniowainsulation.com",
       displayName: "Demo Admin",
@@ -77,190 +118,161 @@ async function main() {
     }
   });
 
-  const source = await prisma.source.upsert({
+  await prisma.membership.upsert({
     where: {
-      organizationId_slug: {
-        organizationId: org.id,
-        slug: "cedar-rapids-building-services"
-      }
+      id: "seed-rep-membership"
     },
     update: {},
     create: {
-      organizationId: org.id,
-      jurisdictionId: jurisdiction.id,
-      name: "Cedar Rapids Building Services",
-      slug: "cedar-rapids-building-services",
-      sourceType: "public permit search portal",
-      parserType: "real-civic-source",
-      sourceUrl: "https://example.gov/cedar-rapids/permits",
-      syncFrequency: "0 */6 * * *",
-      sourceConfidenceScore: 94,
-      sourceFreshnessScore: 88,
-      syncStatus: SourceSyncStatus.success
+      id: "seed-rep-membership",
+      organizationId: organization.id,
+      clerkUserId: "user_demo_rep",
+      email: "sales@easterniowainsulation.com",
+      displayName: "Territory Rep",
+      role: RoleKey.rep
     }
   });
 
-  const company = await prisma.company.upsert({
-    where: {
-      organizationId_normalizedName: {
-        organizationId: org.id,
-        normalizedName: "hawkeye ridge"
-      }
-    },
-    update: {},
-    create: {
-      organizationId: org.id,
-      legalName: "Hawkeye Ridge Homes LLC",
-      normalizedName: "hawkeye ridge",
-      phone: "(319) 555-0184",
-      email: "estimating@hawkeyeridgehomes.com",
-      website: "https://hawkeyeridgehomes.com"
-    }
-  });
+  const countyIds = new Map<string, string>();
 
-  const builder = await prisma.builder.upsert({
-    where: {
-      organizationId_normalizedName: {
-        organizationId: org.id,
-        normalizedName: "hawkeye ridge"
-      }
-    },
-    update: {},
-    create: {
-      organizationId: org.id,
-      companyId: company.id,
-      name: "Hawkeye Ridge Homes",
-      normalizedName: "hawkeye ridge",
-      confidenceScore: 93,
-      builderHeatScore: 91,
-      activeProperties: 7,
-      totalLandValue: 805000,
-      totalImprovementValue: 2925000
-    }
-  });
-
-  const property = await prisma.property.create({
-    data: {
-      address: "1024 Prairie Crest Dr",
-      cityId: cedarRapids.id,
-      countyId: linn!.id,
-      subdivision: "Prairie Crest",
-      lotNumber: "Lot 12",
-      parcel: {
-        create: {
-          parcelNumber: "14-32-101-004"
-        }
-      }
-    }
-  });
-
-  await prisma.permit.upsert({
-    where: { dedupeHash: "seed:CR-2026-001842" },
-    update: {},
-    create: {
-      jurisdictionId: jurisdiction.id,
-      propertyId: property.id,
-      builderId: builder.id,
-      permitNumber: "CR-2026-001842",
-      permitType: "Residential New Construction",
-      permitSubtype: "Single Family Dwelling",
-      permitStatus: "Issued",
-      applicationDate: new Date("2026-03-21"),
-      issueDate: new Date("2026-03-24"),
-      projectDescription: "Single-family home",
-      estimatedProjectValue: 465000,
-      landValue: 98000,
-      improvementValue: 367000,
-      sourceUrl: "https://example.gov/permits/CR-2026-001842",
-      classification: PermitClassification.SINGLE_FAMILY_HOME,
-      dedupeHash: "seed:CR-2026-001842"
-    }
-  });
-
-  const lead = await prisma.lead.create({
-    data: {
-      organizationId: org.id,
-      builderId: builder.id,
-      companyId: company.id,
-      assignedMembershipId: "seed-admin-membership",
-      stage: PipelineStage.READY_TO_BID,
-      score: 96,
-      clusterOpportunityScore: 91,
-      nextFollowUpDate: new Date("2026-03-30T15:00:00Z")
-    }
-  });
-
-  await prisma.leadStageHistory.create({
-    data: {
-      leadId: lead.id,
-      stage: PipelineStage.READY_TO_BID,
-      note: "Seeded grouped single-family lead."
-    }
-  });
-
-  await prisma.plotOpportunity.create({
-    data: {
-      organizationId: org.id,
-      propertyId: property.id,
-      builderId: builder.id,
-      sourceId: source.id,
-      assignedMembershipId: "seed-admin-membership",
-      opportunityType: OpportunityType.ISSUED_NEW_HOME,
-      buildReadiness: BuildReadiness.PERMIT_ISSUED,
-      bidStatus: BidStatus.READY_TO_CONTACT,
-      vacancyConfidence: 92,
-      opportunityScore: 96,
-      contactStatus: "Builder contact found",
-      nextAction: "Call builder and ask to bid insulation package",
-      nextFollowUpDate: new Date("2026-03-30T15:00:00Z"),
-      signalDate: new Date("2026-03-24T00:00:00Z"),
-      sourceEvidence: {
-        permitNumber: "CR-2026-001842",
-        address: "1024 Prairie Crest Dr"
-      }
-    }
-  });
-
-  await prisma.sourceSyncRun.create({
-    data: {
-      sourceId: source.id,
-      status: SourceSyncStatus.success,
-      fetchedCount: 1,
-      normalizedCount: 1,
-      dedupedCount: 1,
-      finishedAt: new Date(),
-      message: "Seed sync run for demo data.",
-      logs: {
-        create: [
-          {
-            level: "info",
-            message: "Fetched 1 record from Cedar Rapids fixture."
-          }
-        ]
-      }
-    }
-  });
-
-  await prisma.territory.createMany({
-    data: [
-      {
-        organizationId: org.id,
-        name: "Cedar Rapids Metro",
-        slug: "cedar-rapids-metro",
-        type: "city_bundle"
+  for (const countyName of cedarRapids75MileCounties) {
+    const county = await prisma.county.upsert({
+      where: {
+        name: countyName
       },
-      {
-        organizationId: org.id,
-        name: "Cedar Rapids to Waterloo Corridor",
-        slug: "cedar-rapids-to-waterloo",
-        type: "corridor"
+      update: {},
+      create: {
+        name: countyName
       }
-    ],
-    skipDuplicates: true
-  });
+    });
 
-  void coralville;
-  void waterloo;
+    countyIds.set(countyName, county.id);
+  }
+
+  const jurisdictionIds = new Map<string, string>();
+
+  for (const source of officialSourceDefinitions) {
+    const countyId = countyIds.get(source.county);
+
+    if (!countyId) {
+      continue;
+    }
+
+    let cityId: string | undefined;
+
+    if (source.city) {
+      const city = await prisma.city.upsert({
+        where: {
+          name_countyId: {
+            name: source.city,
+            countyId
+          }
+        },
+        update: {},
+        create: {
+          name: source.city,
+          countyId
+        }
+      });
+
+      cityId = city.id;
+    }
+
+    const jurisdiction = await prisma.jurisdiction.upsert({
+      where: {
+        name_countyId: {
+          name: source.jurisdiction,
+          countyId
+        }
+      },
+      update: {
+        cityId: cityId ?? null
+      },
+      create: {
+        name: source.jurisdiction,
+        countyId,
+        cityId
+      }
+    });
+
+    jurisdictionIds.set(source.id, jurisdiction.id);
+  }
+
+  for (const source of officialSourceDefinitions) {
+    await prisma.source.upsert({
+      where: {
+        organizationId_slug: {
+          organizationId: organization.id,
+          slug: source.slug
+        }
+      },
+      update: {
+        jurisdictionId: jurisdictionIds.get(source.id) ?? null,
+        name: source.name,
+        county: source.county,
+        city: source.city,
+        sourceScope: source.sourceScope ?? null,
+        countyRadiusEligible: source.countyRadiusEligible ?? false,
+        countySelectorVisible: source.countySelectorVisible ?? false,
+        officialSourceType: source.officialSourceType ?? null,
+        connectorType: source.connectorType.toUpperCase() as never,
+        priorityRank: source.priorityRank,
+        sourceType: source.sourceType,
+        parserType: source.parserType,
+        sourceUrl: source.sourceUrl,
+        active: source.active,
+        authRequired: source.authRequired,
+        syncFrequency: source.syncFrequency
+      },
+      create: {
+        organizationId: organization.id,
+        jurisdictionId: jurisdictionIds.get(source.id) ?? null,
+        name: source.name,
+        slug: source.slug,
+        county: source.county,
+        city: source.city,
+        sourceScope: source.sourceScope ?? null,
+        countyRadiusEligible: source.countyRadiusEligible ?? false,
+        countySelectorVisible: source.countySelectorVisible ?? false,
+        officialSourceType: source.officialSourceType ?? null,
+        connectorType: source.connectorType.toUpperCase() as never,
+        priorityRank: source.priorityRank,
+        sourceType: source.sourceType,
+        parserType: source.parserType,
+        sourceUrl: source.sourceUrl,
+        active: source.active,
+        authRequired: source.authRequired,
+        syncFrequency: source.syncFrequency,
+        sourceConfidenceScore: source.sourceConfidenceScore,
+        sourceFreshnessScore: source.sourceFreshnessScore
+      }
+    });
+  }
+
+  for (const territory of seededTerritories) {
+    await prisma.territory.upsert({
+      where: {
+        organizationId_slug: {
+          organizationId: organization.id,
+          slug: territory.id
+        }
+      },
+      update: {
+        name: territory.name,
+        type: territory.type,
+        radiusMiles: territory.radiusMiles ?? null
+      },
+      create: {
+        organizationId: organization.id,
+        name: territory.name,
+        slug: territory.id,
+        type: territory.type,
+        radiusMiles: territory.radiusMiles ?? null
+      }
+    });
+  }
+
+  console.log("Seeded organization, memberships, counties, territories, and source registry.");
 }
 
 main()

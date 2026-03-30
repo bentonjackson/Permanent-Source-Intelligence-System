@@ -1,10 +1,19 @@
-import { PermitClassification } from "@/types/domain";
+import {
+  DevelopmentStage,
+  PermitClassification,
+  ReadinessToContact,
+  SignalType,
+  SourceStrength
+} from "@/types/domain";
+
+export type SourceConnectorType = "document" | "search" | "portal" | "gis_planning";
 
 export interface ConnectorContext {
   sourceId: string;
   sourceSlug: string;
   organizationId: string;
   runId: string;
+  signal?: AbortSignal;
 }
 
 export interface FetchedRecord {
@@ -40,6 +49,13 @@ export interface NormalizedPermitInput {
   sourceJurisdiction: string;
   sourceUrl: string;
   classification: PermitClassification;
+  signalType?: SignalType | null;
+  developmentStage?: DevelopmentStage | null;
+  sourceStrength?: SourceStrength | null;
+  readinessToContact?: ReadinessToContact | null;
+  clusterId?: string | null;
+  subdivisionId?: string | null;
+  rawIdentityNames?: string[] | null;
   rawPayload: Record<string, unknown>;
 }
 
@@ -59,6 +75,7 @@ export interface ConnectorRunResult {
 export interface SourceConnector {
   slug: string;
   displayName: string;
+  connectorType: SourceConnectorType;
   fetch(context: ConnectorContext): Promise<FetchedRecord[]>;
   parse(records: FetchedRecord[], context: ConnectorContext): Promise<Record<string, unknown>[]>;
   normalize(rows: Record<string, unknown>[], context: ConnectorContext): Promise<NormalizedPermitInput[]>;

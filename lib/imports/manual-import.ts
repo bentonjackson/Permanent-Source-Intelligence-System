@@ -1,6 +1,7 @@
 import { read, utils } from "xlsx";
 
 import { NormalizedPermitInput } from "@/lib/connectors/shared/types";
+import { inferClassification } from "@/lib/connectors/shared/normalization";
 
 export interface ManualImportResult {
   rows: Record<string, unknown>[];
@@ -38,10 +39,11 @@ export function parseWorkbook(buffer: Buffer): ManualImportResult {
     developerName: row["Developer"] ? String(row["Developer"]) : null,
     sourceJurisdiction: String(row["Jurisdiction"] ?? row["City"] ?? "Manual Import"),
     sourceUrl: "manual://import",
-    classification:
-      String(row["Permit Type"] ?? "").toLowerCase().includes("single")
-        ? "single_family_home"
-        : "unknown_needs_review",
+    classification: inferClassification([
+      row["Permit Type"] ? String(row["Permit Type"]) : null,
+      row["Subtype"] ? String(row["Subtype"]) : null,
+      row["Description"] ? String(row["Description"]) : null
+    ]),
     rawPayload: row
   }));
 

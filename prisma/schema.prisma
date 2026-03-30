@@ -74,6 +74,122 @@ enum SourceSyncStatus {
   failed
 }
 
+enum ConnectorType {
+  DOCUMENT
+  SEARCH
+  PORTAL
+  GIS_PLANNING
+}
+
+enum SourceRecordChangeStatus {
+  NEW
+  UPDATED
+  UNCHANGED
+  ERROR
+}
+
+enum SourceRecordParseStatus {
+  PENDING
+  PARSED
+  SKIPPED
+  FAILED
+}
+
+enum EntityRoleType {
+  BUILDER
+  GENERAL_CONTRACTOR
+  DEVELOPER
+  OWNER
+  HOLDING_COMPANY
+  PERSON
+  UNKNOWN
+}
+
+enum ContactQualityTier {
+  HIGH
+  MEDIUM
+  LOW
+  RESEARCH_REQUIRED
+}
+
+enum ContactQualityBand {
+  TIER_1
+  TIER_2
+  TIER_3
+  TIER_4
+  TIER_5
+}
+
+enum RegistrationStatus {
+  ACTIVE
+  INACTIVE
+  UNKNOWN
+  PENDING
+  NOT_FOUND
+}
+
+enum SignalType {
+  NEW_RESIDENTIAL_PERMIT
+  NEW_MULTIFAMILY_PERMIT
+  PARCEL_DEVELOPMENT
+  SUBDIVISION_PLAT
+  REZONING_LAND_USE
+  PLANNING_AGENDA
+  SITE_PREP
+  UTILITY_OR_GRADING
+  CLUSTER_ACTIVITY
+  ASSESSOR_VALUE_MOVEMENT
+  OTHER
+}
+
+enum DevelopmentStage {
+  EARLY_LAND_SIGNAL
+  PLANNING_REVIEW
+  PLAT_REVIEW
+  SITE_PREP
+  PERMIT_INTAKE
+  PERMIT_REVIEW
+  PERMIT_ISSUED
+}
+
+enum SourceStrength {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ReadinessToContact {
+  NOW
+  SOON
+  RESEARCH
+  WATCH
+}
+
+enum ContactResolutionStatus {
+  RESOLVED
+  BUILDER_ONLY
+  WEAK_ENTITY
+  UNKNOWN
+}
+
+enum ReviewQueueType {
+  PARSE_FAILURE
+  WEAK_IDENTITY
+  AMBIGUOUS_MATCH
+  MISSING_CONTACT
+  MISSING_FIELD
+  STALE_SOURCE
+  DUPLICATE_RECORD
+  SOURCE_FAILURE
+}
+
+enum ReviewQueueStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  DISMISSED
+}
+
 model Organization {
   id          String       @id @default(cuid())
   name        String
@@ -91,6 +207,12 @@ model Organization {
   territories Territory[]
   watchlists  Watchlist[]
   plotOpportunities PlotOpportunity[]
+  entityMatches EntityMatch[]
+  enrichmentResults EnrichmentResult[]
+  sourceHealthChecks SourceHealthCheck[]
+  reviewQueueItems ReviewQueueItem[]
+  opportunityStageHistory OpportunityStageHistory[]
+  opportunityContactSnapshots OpportunityContactSnapshot[]
 }
 
 model Membership {
@@ -105,6 +227,8 @@ model Membership {
   updatedAt      DateTime     @updatedAt
   assignedLeads  Lead[]
   plotOpportunities PlotOpportunity[]
+  createdActivities Activity[] @relation("ActivityCreatedByMembership")
+  opportunityStageChanges OpportunityStageHistory[] @relation("OpportunityStageChangedByMembership")
 }
 
 model County {
@@ -171,6 +295,14 @@ model Source {
   jurisdiction          Jurisdiction?    @relation(fields: [jurisdictionId], references: [id], onDelete: SetNull)
   name                  String
   slug                  String
+  county                String?
+  city                  String?
+  sourceScope           String?
+  countyRadiusEligible  Boolean          @default(false)
+  countySelectorVisible Boolean          @default(false)
+  officialSourceType    String?
+  connectorType         ConnectorType    @default(DOCUMENT)
+  priorityRank          Int              @default(100)
   sourceType            String
   parserType            String
   sourceUrl             String
@@ -184,6 +316,9 @@ model Source {
   rawRecords            RawRecord[]
   syncRuns              SourceSyncRun[]
   plotOpportunities     PlotOpportunity[]
+  permits               Permit[]
+  healthChecks          SourceHealthCheck[]
+  reviewQueueItems      ReviewQueueItem[]
 
   @@unique([organizationId, slug])
 }
@@ -200,6 +335,8 @@ model SourceSyncRun {
   dedupedCount   Int              @default(0)
   message        String?
   logs           SourceSyncLog[]
+  rawRecords     RawRecord[]
+  healthChecks   SourceHealthCheck[]
 }
 
 model SourceSyncLog {
@@ -216,13 +353,23 @@ model RawRecord {
   sourceId    String
   source      Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   runId       String?
+  run         SourceSyncRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
   externalId  String
+  sourceUrl   String?
+  recordKey   String   @default("")
+  contentHash String   @default("")
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  changeStatus SourceRecordChangeStatus @default(NEW)
+  parseStatus SourceRecordParseStatus   @default(PENDING)
+  errorMessage String?
   payload     Json
   dedupeHash  String
   fetchedAt   DateTime
   createdAt   DateTime @default(now())
   permitId    String?
   permit      Permit?  @relation(fields: [permitId], references: [id], onDelete: SetNull)
+  reviewQueueItems ReviewQueueItem[]
 
   @@unique([sourceId, dedupeHash])
 }
@@ -235,25 +382,58 @@ model Builder {
   company             Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
   name                String
   normalizedName      String
+  rawSourceName       String?
+  rawSourceNames      String[]        @default([])
+  preferredSalesName  String?
+  roleType            EntityRoleType @default(UNKNOWN)
+  contactQualityTier  ContactQualityTier @default(RESEARCH_REQUIRED)
+  preferredContactTarget String?
+  phone               String?
+  email               String?
+  website             String?
+  mailingAddress      String?
+  cityState           String?
+  contractorRegistrationNumber String?
+  contractorRegistrationStatus RegistrationStatus @default(UNKNOWN)
+  businessEntityNumber String?
+  businessEntityStatus RegistrationStatus @default(UNKNOWN)
+  notes               String?
   confidenceScore     Int            @default(0)
+  roleConfidenceScore Int            @default(0)
+  contactQualityScore Int            @default(0)
+  contactQualityBand  ContactQualityBand @default(TIER_5)
   builderHeatScore    Int            @default(0)
   activeProperties    Int            @default(0)
   totalLandValue      Decimal?       @db.Decimal(12, 2)
   totalImprovementValue Decimal?     @db.Decimal(12, 2)
+  nextBestAction      String?
+  lastEnrichedAt      DateTime?
+  lastVerifiedAt      DateTime?
+  matchProvenance     Json?
   aliases             BuilderAlias[]
   permits             Permit[]
   leads               Lead[]
   contacts            Contact[]
   plotOpportunities   PlotOpportunity[]
+  entityMatches       EntityMatch[]
+  enrichmentResults   EnrichmentResult[]
+  contactSnapshots    OpportunityContactSnapshot[] @relation("SnapshotPrimaryEntity")
+  reviewQueueItems    ReviewQueueItem[]
 
   @@unique([organizationId, normalizedName])
 }
 
 model BuilderAlias {
-  id        String  @id @default(cuid())
-  builderId String
-  builder   Builder @relation(fields: [builderId], references: [id], onDelete: Cascade)
-  rawName   String
+  id             String   @id @default(cuid())
+  builderId      String
+  builder        Builder  @relation(fields: [builderId], references: [id], onDelete: Cascade)
+  rawName        String
+  normalizedName String?
+  fingerprint    String?
+  sourceLabel    String?
+  sourceUrl      String?
+  firstSeenAt    DateTime @default(now())
+  lastSeenAt     DateTime @default(now())
 }
 
 model Company {
@@ -262,12 +442,33 @@ model Company {
   organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   legalName         String
   normalizedName    String
+  rawSourceName     String?
+  rawSourceNames    String[]         @default([])
+  preferredSalesName String?
+  roleType          EntityRoleType   @default(UNKNOWN)
+  contactQualityTier ContactQualityTier @default(RESEARCH_REQUIRED)
+  preferredContactTarget String?
+  entityConfidenceScore Int          @default(0)
   phone             String?
   email             String?
   website           String?
   mailingAddress    String?
+  cityState         String?
+  contractorRegistrationNumber String?
+  contractorRegistrationStatus RegistrationStatus @default(UNKNOWN)
+  businessEntityNumber String?
+  businessEntityStatus RegistrationStatus @default(UNKNOWN)
+  roleConfidenceScore Int           @default(0)
+  contactQualityScore Int           @default(0)
+  contactQualityBand ContactQualityBand @default(TIER_5)
+  contactSource     String?
+  contactUrl        String?
+  lastEnrichedAt    DateTime?
+  lastVerifiedAt    DateTime?
+  matchProvenance   Json?
   builders          Builder[]
   contacts          Contact[]
+  entityMatches     EntityMatch[]
   enrichmentResults EnrichmentResult[]
   leads             Lead[]
 
@@ -282,16 +483,45 @@ model Contact {
   builder           Builder?       @relation(fields: [builderId], references: [id], onDelete: SetNull)
   companyId         String?
   company           Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  opportunityId     String?
+  opportunity       PlotOpportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
   fullName          String?
+  firstName         String?
+  lastName          String?
+  companyName       String?
   email             String?
   phone             String?
+  mobilePhone       String?
+  officePhone       String?
   roleTitle         String?
   publicProfileUrl  String?
+  website           String?
+  linkedinUrl       String?
+  preferredContactMethod String?
+  bestTimeToContact String?
+  notes             String?
+  mailingAddress    String?
+  cityState         String?
+  sourceLabel       String?
+  sourceUrl         String?
+  confidenceScore   Int            @default(0)
+  qualityScore      Int            @default(0)
+  qualityBand       ContactQualityBand @default(TIER_5)
+  isPrimary         Boolean        @default(false)
+  lastVerifiedAt    DateTime?
+  lastEnrichedAt    DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @default(now()) @updatedAt
+  activities        Activity[]
+  contactSnapshots  OpportunityContactSnapshot[] @relation("SnapshotPrimaryContact")
+
+  @@index([opportunityId, isPrimary])
 }
 
 model Property {
   id           String    @id @default(cuid())
   address      String
+  normalizedAddress String?
   cityId       String?
   city         City?     @relation(fields: [cityId], references: [id], onDelete: SetNull)
   countyId     String?
@@ -300,6 +530,9 @@ model Property {
   zip          String?
   subdivision  String?
   lotNumber    String?
+  parcelNumber String?   @unique
+  landValue    Decimal?  @db.Decimal(12, 2)
+  improvementValue Decimal? @db.Decimal(12, 2)
   parcel       Parcel?
   permits      Permit[]
   notes        Note[]
@@ -313,12 +546,15 @@ model PlotOpportunity {
   organization         Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   propertyId           String?
   property             Property?         @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  permitId             String?
+  permit               Permit?           @relation(fields: [permitId], references: [id], onDelete: SetNull)
   builderId            String?
   builder              Builder?          @relation(fields: [builderId], references: [id], onDelete: SetNull)
   sourceId             String?
   source               Source?           @relation(fields: [sourceId], references: [id], onDelete: SetNull)
   assignedMembershipId String?
   assignedMembership   Membership?       @relation(fields: [assignedMembershipId], references: [id], onDelete: SetNull)
+  currentStage         PipelineStage     @default(NEW)
   address              String?
   city                 String?
   county               String?
@@ -327,17 +563,56 @@ model PlotOpportunity {
   lotNumber            String?
   builderName          String?
   likelyCompanyName    String?
+  rawSourceName        String?
+  normalizedEntityName String?
+  preferredSalesName   String?
+  legalEntityName      String?
+  roleType             EntityRoleType @default(UNKNOWN)
+  entityConfidenceScore Int           @default(0)
+  roleConfidenceScore  Int           @default(0)
+  contactQualityTier   ContactQualityTier @default(RESEARCH_REQUIRED)
+  contactQualityScore  Int           @default(0)
+  contactQualityBand   ContactQualityBand @default(TIER_5)
+  preferredContactTarget String?
+  contractorRegistrationNumber String?
+  contractorRegistrationStatus RegistrationStatus @default(UNKNOWN)
+  businessEntityNumber String?
+  businessEntityStatus RegistrationStatus @default(UNKNOWN)
+  mailingAddress       String?
+  cityState            String?
   permitNumber         String?
   sourceName           String?
   sourceJurisdiction   String?
   sourceUrl            String?
   classification       PermitClassification @default(UNKNOWN_NEEDS_REVIEW)
+  signalType           SignalType        @default(OTHER)
+  developmentStage     DevelopmentStage  @default(PERMIT_REVIEW)
+  sourceStrength       SourceStrength    @default(MEDIUM)
+  readinessToContact   ReadinessToContact @default(RESEARCH)
+  clusterId            String?
   projectSegment       ProjectSegment    @default(SINGLE_FAMILY)
   opportunityType      OpportunityType
   buildReadiness       BuildReadiness
   bidStatus            BidStatus         @default(NOT_REVIEWED)
   vacancyConfidence    Int               @default(0)
   opportunityScore     Int               @default(0)
+  contactedAt          DateTime?
+  lastContactedAt      DateTime?
+  nextFollowUpAt       DateTime?
+  followUpNeeded       Boolean           @default(false)
+  interestStatus       String?
+  outcomeStatus        String?
+  contactSummary       String?
+  notesSummary         String?
+  outreachCount        Int               @default(0)
+  callCount            Int               @default(0)
+  emailCount           Int               @default(0)
+  textCount            Int               @default(0)
+  reasonLost           String?
+  internalNotes        String?
+  externalSummary      String?
+  quoteRequestedAt     DateTime?
+  quoteSentAt          DateTime?
   contactStatus        String?
   nextAction           String?
   nextFollowUpDate     DateTime?
@@ -350,10 +625,22 @@ model PlotOpportunity {
   closedAt             DateTime?
   signalDate           DateTime
   sourceEvidence       Json?
+  matchProvenance      Json?
+  contactResolutionStatus ContactResolutionStatus @default(UNKNOWN)
+  lastContactResolutionRunAt DateTime?
+  lastEnrichedAt       DateTime?
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
+  contacts             Contact[]
+  activities           Activity[]
+  entityMatches        EntityMatch[]
+  enrichmentResults    EnrichmentResult[]
+  stageHistory         OpportunityStageHistory[]
+  contactSnapshot      OpportunityContactSnapshot?
+  reviewQueueItems     ReviewQueueItem[]
 
   @@index([organizationId, opportunityScore])
+  @@index([organizationId, currentStage, nextFollowUpAt])
 }
 
 model Parcel {
@@ -365,6 +652,8 @@ model Parcel {
 
 model Permit {
   id                    String               @id @default(cuid())
+  sourceId              String?
+  source                Source?              @relation(fields: [sourceId], references: [id], onDelete: SetNull)
   jurisdictionId        String?
   jurisdiction          Jurisdiction?        @relation(fields: [jurisdictionId], references: [id], onDelete: SetNull)
   propertyId            String?
@@ -388,6 +677,7 @@ model Permit {
   classification        PermitClassification @default(UNKNOWN_NEEDS_REVIEW)
   dedupeHash            String               @unique
   rawRecords            RawRecord[]
+  plotOpportunities     PlotOpportunity[]
 
   @@unique([permitNumber, sourceUrl])
 }
@@ -428,17 +718,75 @@ model LeadStageHistory {
   note      String?
 }
 
+model OpportunityStageHistory {
+  id                    String        @id @default(cuid())
+  organizationId        String
+  organization          Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  opportunityId         String
+  opportunity           PlotOpportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  fromStage             PipelineStage?
+  toStage               PipelineStage
+  fromBidStatus         BidStatus?
+  toBidStatus           BidStatus
+  note                  String?
+  sourceLabel           String?
+  changedByMembershipId String?
+  changedByMembership   Membership?   @relation("OpportunityStageChangedByMembership", fields: [changedByMembershipId], references: [id], onDelete: SetNull)
+  changedAt             DateTime      @default(now())
+
+  @@index([opportunityId, changedAt])
+}
+
+model OpportunityContactSnapshot {
+  id                       String                @id @default(cuid())
+  organizationId           String
+  organization             Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  opportunityId            String                @unique
+  opportunity              PlotOpportunity       @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  primaryEntityId          String?
+  primaryEntity            Builder?              @relation("SnapshotPrimaryEntity", fields: [primaryEntityId], references: [id], onDelete: SetNull)
+  primaryContactId         String?
+  primaryContact           Contact?              @relation("SnapshotPrimaryContact", fields: [primaryContactId], references: [id], onDelete: SetNull)
+  primaryEntityName        String?
+  primaryContactName       String?
+  primaryPhone             String?
+  primaryEmail             String?
+  primaryWebsite           String?
+  contactQualityTier       ContactQualityTier    @default(RESEARCH_REQUIRED)
+  contactQualityBand       ContactQualityBand    @default(TIER_5)
+  contactQualityScore      Int                   @default(0)
+  entityConfidenceScore    Int                   @default(0)
+  nextBestAction           String?
+  contactResolutionStatus  ContactResolutionStatus @default(UNKNOWN)
+  resolutionNotes          String?
+  lastContactResolutionRunAt DateTime?
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+}
+
 model Activity {
   id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  leadId         String
-  lead           Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  leadId         String?
+  lead           Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  opportunityId  String?
+  opportunity    PlotOpportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  contactId      String?
+  contact        Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
   propertyId     String?
   property       Property?    @relation(fields: [propertyId], references: [id], onDelete: SetNull)
   type           String
+  direction      String?
   occurredAt     DateTime     @default(now())
-  description    String
+  outcome        String?
+  note           String?
+  description    String?
+  createdByMembershipId String?
+  createdByMembership Membership? @relation("ActivityCreatedByMembership", fields: [createdByMembershipId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+
+  @@index([opportunityId, occurredAt])
 }
 
 model Note {
@@ -478,14 +826,105 @@ model Watchlist {
   watchValue     String
 }
 
+model EntityMatch {
+  id                   String         @id @default(cuid())
+  organizationId       String
+  organization         Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  builderId            String?
+  builder              Builder?       @relation(fields: [builderId], references: [id], onDelete: Cascade)
+  companyId            String?
+  company              Company?       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plotOpportunityId    String?
+  plotOpportunity      PlotOpportunity? @relation(fields: [plotOpportunityId], references: [id], onDelete: Cascade)
+  rawSourceName        String
+  normalizedEntityName String
+  preferredSalesName   String?
+  fingerprint          String
+  roleType             EntityRoleType @default(UNKNOWN)
+  roleConfidenceScore  Int            @default(0)
+  matchScore           Int            @default(0)
+  matchStrategy        String
+  sourceLabel          String
+  sourceUrl            String?
+  rationale            String?
+  payload              Json?
+  isPrimary            Boolean        @default(false)
+  createdAt            DateTime       @default(now())
+  lastCheckedAt        DateTime       @default(now())
+}
+
 model EnrichmentResult {
-  id             String       @id @default(cuid())
-  companyId      String
-  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  provider       String
-  payload        Json
-  confidence     Int
-  refreshedAt    DateTime     @default(now())
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  builderId        String?
+  builder          Builder?     @relation(fields: [builderId], references: [id], onDelete: Cascade)
+  companyId        String?
+  company          Company?     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plotOpportunityId String?
+  plotOpportunity  PlotOpportunity? @relation(fields: [plotOpportunityId], references: [id], onDelete: Cascade)
+  provider         String
+  fieldName        String?
+  fieldValue       String?
+  sourceLabel      String?
+  sourceUrl        String?
+  rationale        String?
+  payload          Json
+  confidence       Int
+  refreshedAt      DateTime     @default(now())
+  lastVerifiedAt   DateTime?
+}
+
+model SourceHealthCheck {
+  id                String           @id @default(cuid())
+  organizationId    String
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceId          String
+  source            Source           @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  runId             String?
+  run               SourceSyncRun?   @relation(fields: [runId], references: [id], onDelete: SetNull)
+  status            SourceSyncStatus
+  checkedAt         DateTime         @default(now())
+  httpStatus        Int?
+  fetchedCount      Int              @default(0)
+  normalizedCount   Int              @default(0)
+  parseFailureCount Int              @default(0)
+  missingFieldCount Int              @default(0)
+  duplicateCount    Int              @default(0)
+  errorMessage      String?
+  notes             String?
+}
+
+model ReviewQueueItem {
+  id               String            @id @default(cuid())
+  organizationId   String
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sourceId         String?
+  source           Source?           @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  rawRecordId      String?
+  rawRecord        RawRecord?        @relation(fields: [rawRecordId], references: [id], onDelete: SetNull)
+  builderId        String?
+  builder          Builder?          @relation(fields: [builderId], references: [id], onDelete: SetNull)
+  opportunityId    String?
+  opportunity      PlotOpportunity?  @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  reviewType       ReviewQueueType
+  status           ReviewQueueStatus @default(OPEN)
+  priority         Int               @default(50)
+  title            String
+  details          String?
+  rationale        String?
+  sourceUrl        String?
+  fingerprint      String?
+  confidenceScore  Int               @default(0)
+  firstSeenAt      DateTime          @default(now())
+  lastSeenAt       DateTime          @default(now())
+  resolvedAt       DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([organizationId, status, priority])
+  @@index([sourceId, status])
+  @@index([opportunityId, status])
 }
 
 model LeadScoreSnapshot {

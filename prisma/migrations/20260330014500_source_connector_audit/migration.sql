@@ -1,0 +1,24 @@
+-- CreateEnum
+CREATE TYPE "ConnectorType" AS ENUM ('DOCUMENT', 'SEARCH', 'PORTAL', 'GIS_PLANNING');
+
+-- CreateEnum
+CREATE TYPE "SourceRecordChangeStatus" AS ENUM ('NEW', 'UPDATED', 'UNCHANGED', 'ERROR');
+
+-- CreateEnum
+CREATE TYPE "SourceRecordParseStatus" AS ENUM ('PENDING', 'PARSED', 'SKIPPED', 'FAILED');
+
+-- AlterTable
+ALTER TABLE "Source"
+ADD COLUMN "connectorType" "ConnectorType" NOT NULL DEFAULT 'DOCUMENT',
+ADD COLUMN "priorityRank" INTEGER NOT NULL DEFAULT 100;
+
+-- AlterTable
+ALTER TABLE "RawRecord"
+ADD COLUMN "sourceUrl" TEXT,
+ADD COLUMN "recordKey" TEXT NOT NULL DEFAULT '',
+ADD COLUMN "contentHash" TEXT NOT NULL DEFAULT '',
+ADD COLUMN "firstSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ADD COLUMN "lastSeenAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ADD COLUMN "changeStatus" "SourceRecordChangeStatus" NOT NULL DEFAULT 'NEW',
+ADD COLUMN "parseStatus" "SourceRecordParseStatus" NOT NULL DEFAULT 'PENDING',
+ADD COLUMN "errorMessage" TEXT;

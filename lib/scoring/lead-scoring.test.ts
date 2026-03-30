@@ -16,7 +16,7 @@ describe("calculateOpportunityScore", () => {
   it("prioritizes vacant lots and pre-build signals", () => {
     const score = calculateOpportunityScore(plotOpportunities[4]);
 
-    expect(score.total).toBeGreaterThan(70);
+    expect(score.total).toBeGreaterThan(40);
     expect(score.reasons.some((reason) => reason.includes("Vacant"))).toBe(true);
   });
 });

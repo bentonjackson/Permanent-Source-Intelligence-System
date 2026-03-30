@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { builders } from "@/lib/sample-data";
+import { getBuilderRecords } from "@/lib/opportunities/live-data";
 
 export async function GET() {
+  const builders = await getBuilderRecords();
   return NextResponse.json(
     builders.map((builder) => ({
       id: builder.id,

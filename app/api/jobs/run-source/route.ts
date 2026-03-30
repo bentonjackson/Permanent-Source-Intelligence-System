@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { runScheduledSync } from "@/lib/jobs/source-sync";
+import { runAllScheduledSyncs, runScheduledSync } from "@/lib/jobs/source-sync";
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const result = await runScheduledSync(body.sourceId);
+  try {
+    const body = await request.json().catch(() => ({}));
+    const result = body.sourceId ? await runScheduledSync(body.sourceId) : await runAllScheduledSyncs();
 
-  return NextResponse.json(result);
+    return NextResponse.json(result);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: "Unable to run source sync.",
+        detail: error instanceof Error ? error.message : "Unknown source sync failure."
+      },
+      { status: 500 }
+    );
+  }
 }

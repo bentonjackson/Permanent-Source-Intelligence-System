@@ -49,6 +49,8 @@ export function calculateLeadScore(builder: BuilderRecord): ScoreBreakdown {
   total += builder.counties.length > 1 ? 10 : 4;
   total += builder.contact.email ? 8 : 0;
   total += builder.contact.phone ? 6 : 0;
+  total += builder.preferredSalesName ? 8 : 0;
+  total += builder.contactQualityTier === "high" ? 8 : builder.contactQualityTier === "medium" ? 4 : 0;
 
   return {
     total: Math.min(100, total),
@@ -93,9 +95,12 @@ export function calculateOpportunityScore(opportunity: PlotOpportunity) {
     reasons.push("Permit already issued");
   }
 
-  if (opportunity.builderName) {
+  if (opportunity.preferredSalesName) {
     total += 10;
     reasons.push("Builder identified");
+  } else if (opportunity.rawSourceName) {
+    total += 2;
+    reasons.push("Related entity found, but contact still needs research");
   }
 
   total += corridorBoostForCounty(opportunity.county);

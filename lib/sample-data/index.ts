@@ -1,4 +1,323 @@
+import { resolveEntityIdentity } from "@/lib/entities/contact-identity";
 import { BuilderRecord, DashboardSnapshot, PlotOpportunity, SourceRecord } from "@/types/domain";
+
+const builderDefaults = {
+  rawSourceName: null,
+  preferredSalesName: null,
+  legalEntityName: null,
+  aliases: [],
+  roleType: "unknown",
+  entityConfidenceScore: 0,
+  roleConfidenceScore: 0,
+  contactQualityTier: "research_required",
+  contactQualityBand: "tier_5",
+  contactQualityScore: 0,
+  preferredContactTarget: "Research contact",
+  contractorRegistrationNumber: null,
+  contractorRegistrationStatus: "unknown",
+  businessEntityNumber: null,
+  businessEntityStatus: "unknown",
+  mailingAddress: null,
+  cityState: null,
+  lastEnrichedAt: null,
+  nextBestAction: "Research contact",
+  builderHeatScore: 0,
+  totalEstimatedValue: 0,
+  totalLandValue: 0,
+  totalImprovementValue: 0,
+  lastActivityAt: null,
+  entityMatches: [],
+  enrichmentAudit: []
+} satisfies Pick<
+  BuilderRecord,
+  | "rawSourceName"
+  | "preferredSalesName"
+  | "legalEntityName"
+  | "aliases"
+  | "roleType"
+  | "entityConfidenceScore"
+  | "roleConfidenceScore"
+  | "contactQualityTier"
+  | "contactQualityBand"
+  | "contactQualityScore"
+  | "preferredContactTarget"
+  | "contractorRegistrationNumber"
+  | "contractorRegistrationStatus"
+  | "businessEntityNumber"
+  | "businessEntityStatus"
+  | "mailingAddress"
+  | "cityState"
+  | "lastEnrichedAt"
+  | "nextBestAction"
+  | "builderHeatScore"
+  | "totalEstimatedValue"
+  | "totalLandValue"
+  | "totalImprovementValue"
+  | "lastActivityAt"
+  | "entityMatches"
+  | "enrichmentAudit"
+>;
+
+const opportunityDefaults = {
+  assignedMembershipId: null,
+  rawSourceName: null,
+  normalizedEntityName: null,
+  preferredSalesName: null,
+  legalEntityName: null,
+  aliases: [],
+  roleType: "unknown",
+  entityConfidenceScore: 0,
+  roleConfidenceScore: 0,
+  contactQualityTier: "research_required",
+  contactQualityBand: "tier_5",
+  contactQualityScore: 0,
+  preferredContactTarget: "Research contact",
+  phone: null,
+  email: null,
+  website: null,
+  contractorRegistrationNumber: null,
+  contractorRegistrationStatus: "unknown",
+  businessEntityNumber: null,
+  businessEntityStatus: "unknown",
+  mailingAddress: null,
+  cityState: null,
+  lastEnrichedAt: null,
+  estimatedProjectValue: null,
+  landValue: null,
+  improvementValue: null,
+  signalType: "other",
+  developmentStage: "permit_review",
+  sourceStrength: "medium",
+  readinessToContact: "research",
+  clusterId: null,
+  currentStage: "New",
+  contactedAt: null,
+  lastContactedAt: null,
+  nextFollowUpAt: null,
+  followUpNeeded: false,
+  interestStatus: "unknown",
+  outcomeStatus: "open",
+  contactSummary: null,
+  notesSummary: null,
+  outreachCount: 0,
+  callCount: 0,
+  emailCount: 0,
+  textCount: 0,
+  reasonLost: null,
+  internalNotes: null,
+  externalSummary: null,
+  quoteRequestedAt: null,
+  quoteSentAt: null,
+  contactResolutionStatus: "unknown",
+  lastContactResolutionRunAt: null,
+  stageHistory: [],
+  contactSnapshot: null,
+  entityMatches: [],
+  enrichmentAudit: [],
+  contacts: [],
+  activities: []
+} satisfies Pick<
+  PlotOpportunity,
+  | "assignedMembershipId"
+  | "rawSourceName"
+  | "normalizedEntityName"
+  | "preferredSalesName"
+  | "legalEntityName"
+  | "aliases"
+  | "roleType"
+  | "entityConfidenceScore"
+  | "roleConfidenceScore"
+  | "contactQualityTier"
+  | "contactQualityBand"
+  | "contactQualityScore"
+  | "preferredContactTarget"
+  | "phone"
+  | "email"
+  | "website"
+  | "contractorRegistrationNumber"
+  | "contractorRegistrationStatus"
+  | "businessEntityNumber"
+  | "businessEntityStatus"
+  | "mailingAddress"
+  | "cityState"
+  | "lastEnrichedAt"
+  | "estimatedProjectValue"
+  | "landValue"
+  | "improvementValue"
+  | "signalType"
+  | "developmentStage"
+  | "sourceStrength"
+  | "readinessToContact"
+  | "clusterId"
+  | "currentStage"
+  | "contactedAt"
+  | "lastContactedAt"
+  | "nextFollowUpAt"
+  | "followUpNeeded"
+  | "interestStatus"
+  | "outcomeStatus"
+  | "contactSummary"
+  | "notesSummary"
+  | "outreachCount"
+  | "callCount"
+  | "emailCount"
+  | "textCount"
+  | "reasonLost"
+  | "internalNotes"
+  | "externalSummary"
+  | "quoteRequestedAt"
+  | "quoteSentAt"
+  | "contactResolutionStatus"
+  | "lastContactResolutionRunAt"
+  | "stageHistory"
+  | "contactSnapshot"
+  | "entityMatches"
+  | "enrichmentAudit"
+  | "contacts"
+  | "activities"
+>;
+
+function deriveQualityMeta(tier: BuilderRecord["contactQualityTier"]) {
+  if (tier === "high") {
+    return { band: "tier_1" as const, score: 96 };
+  }
+
+  if (tier === "medium") {
+    return { band: "tier_2" as const, score: 78 };
+  }
+
+  if (tier === "low") {
+    return { band: "tier_3" as const, score: 56 };
+  }
+
+  return { band: "tier_5" as const, score: 18 };
+}
+
+function stageFromBidStatus(status: PlotOpportunity["bidStatus"]): PlotOpportunity["currentStage"] {
+  if (status === "contacted") return "Contacted";
+  if (status === "won") return "Won";
+  if (status === "lost") return "Lost";
+  if (status === "quoted" || status === "bid_requested") return "Quoted";
+  if (status === "ready_to_contact") return "Ready to Bid";
+  if (status === "researching_builder") return "Research Builder";
+  if (status === "not_a_fit") return "Not a Fit";
+  return "New";
+}
+
+function withBuilderIdentity(
+  builder: BuilderSeedRecord
+): BuilderRecord {
+  const identity = resolveEntityIdentity(
+    {
+      builderName: builder.name,
+      contractorName: null,
+      developerName: null,
+      ownerName: null
+    },
+    builder.contact
+  );
+  const quality = deriveQualityMeta(identity.contactQualityTier);
+
+  return {
+    ...builder,
+    rawSourceName: identity.rawSourceName,
+    preferredSalesName: identity.preferredSalesName,
+    legalEntityName: identity.legalEntityName,
+    aliases: [],
+    roleType: identity.roleType,
+    entityConfidenceScore: identity.entityConfidenceScore,
+    roleConfidenceScore: Math.max(0, Math.min(100, Math.round(identity.entityConfidenceScore * 0.72))),
+    contactQualityTier: identity.contactQualityTier,
+    contactQualityBand: quality.band,
+    contactQualityScore: quality.score,
+    preferredContactTarget: identity.preferredContactTarget
+  };
+}
+
+function withOpportunityIdentity(
+  opportunity: OpportunitySeedRecord
+): PlotOpportunity {
+  const identity = resolveEntityIdentity(
+    {
+      builderName: opportunity.builderName,
+      contractorName: null,
+      developerName: null,
+      ownerName: opportunity.builderName ? null : opportunity.likelyCompanyName
+    },
+    {}
+  );
+  const quality = deriveQualityMeta(identity.contactQualityTier);
+
+  return {
+    ...opportunity,
+    rawSourceName: identity.rawSourceName,
+    normalizedEntityName: identity.normalizedEntityName,
+    preferredSalesName: identity.preferredSalesName,
+    legalEntityName: identity.legalEntityName,
+    aliases: [],
+    roleType: identity.roleType,
+    entityConfidenceScore: identity.entityConfidenceScore,
+    roleConfidenceScore: Math.max(0, Math.min(100, Math.round(identity.entityConfidenceScore * 0.72))),
+    contactQualityTier: identity.contactQualityTier,
+    contactQualityBand: quality.band,
+    contactQualityScore: quality.score,
+    preferredContactTarget: identity.preferredContactTarget,
+    currentStage: stageFromBidStatus(opportunity.bidStatus),
+    contactedAt: opportunity.inquiredAt,
+    lastContactedAt: opportunity.followedUpOn ?? opportunity.inquiredAt,
+    nextFollowUpAt: opportunity.nextFollowUpDate,
+    followUpNeeded: opportunity.needsFollowUp,
+    contactSummary: opportunity.contactStatus,
+    notesSummary: opportunity.notes[0] ?? null,
+    outreachCount: opportunity.bidStatus === "contacted" ? 1 : 0,
+    callCount: opportunity.bidStatus === "contacted" ? 1 : 0,
+    phone: null,
+    email: null,
+    website: null,
+    signalType: opportunity.signalType,
+    developmentStage: opportunity.developmentStage,
+    sourceStrength: opportunity.sourceStrength,
+    readinessToContact: opportunity.readinessToContact,
+    clusterId: opportunity.clusterId,
+    contactResolutionStatus:
+      identity.preferredSalesName && identity.entityConfidenceScore >= 64
+        ? "builder_only"
+        : ["owner", "holding_company", "person"].includes(identity.roleType)
+          ? "weak_entity"
+          : "unknown",
+    lastContactResolutionRunAt: null,
+    stageHistory: [],
+    contactSnapshot: null
+  };
+}
+
+type BuilderSeedRecord = Omit<
+  BuilderRecord,
+  | "rawSourceName"
+  | "preferredSalesName"
+  | "legalEntityName"
+  | "aliases"
+  | "roleType"
+  | "entityConfidenceScore"
+  | "contactQualityTier"
+  | "preferredContactTarget"
+>;
+
+type OpportunitySeedRecord = Omit<
+  PlotOpportunity,
+  | "rawSourceName"
+  | "normalizedEntityName"
+  | "preferredSalesName"
+  | "legalEntityName"
+  | "aliases"
+  | "roleType"
+  | "entityConfidenceScore"
+  | "contactQualityTier"
+  | "preferredContactTarget"
+  | "phone"
+  | "email"
+  | "website"
+>;
 
 export const sources: SourceRecord[] = [
   {
@@ -8,6 +327,8 @@ export const sources: SourceRecord[] = [
     jurisdiction: "Cedar Rapids",
     county: "Linn",
     city: "Cedar Rapids",
+    connectorType: "document",
+    priorityRank: 10,
     sourceType: "public permit search portal",
     parserType: "real-civic-source",
     sourceUrl: "https://example.gov/cedar-rapids/permits",
@@ -38,6 +359,8 @@ export const sources: SourceRecord[] = [
     jurisdiction: "Johnson County",
     county: "Johnson",
     city: "Iowa City",
+    connectorType: "search",
+    priorityRank: 40,
     sourceType: "manual import",
     parserType: "manual-xlsx",
     sourceUrl: "manual://johnson-county",
@@ -63,6 +386,8 @@ export const sources: SourceRecord[] = [
     jurisdiction: "Waterloo",
     county: "Black Hawk",
     city: "Waterloo",
+    connectorType: "portal",
+    priorityRank: 60,
     sourceType: "public permit viewer",
     parserType: "mock-structured",
     sourceUrl: "mock://waterloo-demo",
@@ -83,8 +408,9 @@ export const sources: SourceRecord[] = [
   }
 ];
 
-export const builders: BuilderRecord[] = [
+export const builders = ([
   {
+    ...builderDefaults,
     id: "bld-hawkeye-homes",
     name: "Hawkeye Ridge Homes",
     normalizedName: "hawkeye ridge homes",
@@ -163,6 +489,7 @@ export const builders: BuilderRecord[] = [
     ]
   },
   {
+    ...builderDefaults,
     id: "bld-corridor-custom",
     name: "Corridor Custom Builders LLC",
     normalizedName: "corridor custom builders",
@@ -213,6 +540,7 @@ export const builders: BuilderRecord[] = [
     ]
   },
   {
+    ...builderDefaults,
     id: "bld-river-bend",
     name: "River Bend Development Group",
     normalizedName: "river bend development group",
@@ -263,6 +591,7 @@ export const builders: BuilderRecord[] = [
     ]
   },
   {
+    ...builderDefaults,
     id: "bld-corridor-multifamily",
     name: "Corridor Living Communities",
     normalizedName: "corridor living communities",
@@ -313,6 +642,7 @@ export const builders: BuilderRecord[] = [
     ]
   },
   {
+    ...builderDefaults,
     id: "bld-redline-commercial",
     name: "Redline Commercial Contractors",
     normalizedName: "redline commercial contractors",
@@ -362,10 +692,11 @@ export const builders: BuilderRecord[] = [
       }
     ]
   }
-];
+] satisfies BuilderSeedRecord[]).map(withBuilderIdentity);
 
-export const plotOpportunities: PlotOpportunity[] = [
+export const plotOpportunities = ([
   {
+    ...opportunityDefaults,
     id: "opp-1",
     address: "1024 Prairie Crest Dr",
     city: "Cedar Rapids",
@@ -406,6 +737,7 @@ export const plotOpportunities: PlotOpportunity[] = [
     reasonSummary: ["Permit issued", "Single-family home", "Builder identified"]
   },
   {
+    ...opportunityDefaults,
     id: "opp-2",
     address: "412 Harvest View Ln",
     city: "Coralville",
@@ -443,6 +775,7 @@ export const plotOpportunities: PlotOpportunity[] = [
     reasonSummary: ["Permit in review", "Single-family home", "Priority county"]
   },
   {
+    ...opportunityDefaults,
     id: "opp-3",
     address: "1190 Echo Valley Trl",
     city: "Marion",
@@ -483,6 +816,7 @@ export const plotOpportunities: PlotOpportunity[] = [
     reasonSummary: ["Issued permit", "Builder identified", "Subdivision activity"]
   },
   {
+    ...opportunityDefaults,
     id: "opp-4",
     address: "2716 Blue Stem Ct",
     city: "Waterloo",
@@ -520,6 +854,7 @@ export const plotOpportunities: PlotOpportunity[] = [
     reasonSummary: ["Subdivision lot", "Early-stage build signal", "Builder needs research"]
   },
   {
+    ...opportunityDefaults,
     id: "opp-5",
     address: "1032 Prairie Crest Dr",
     city: "Cedar Rapids",
@@ -557,6 +892,7 @@ export const plotOpportunities: PlotOpportunity[] = [
     reasonSummary: ["Vacant lot", "Same builder on nearby lots", "Inside preferred corridor"]
   },
   {
+    ...opportunityDefaults,
     id: "opp-6",
     address: "805 River Oaks Dr",
     city: "Iowa City",
@@ -594,6 +930,7 @@ export const plotOpportunities: PlotOpportunity[] = [
     reasonSummary: ["Multifamily permit in review", "Builder identified", "Large insulation scope"]
   },
   {
+    ...opportunityDefaults,
     id: "opp-7",
     address: "2400 Commerce Park Rd",
     city: "Cedar Rapids",
@@ -630,7 +967,7 @@ export const plotOpportunities: PlotOpportunity[] = [
     notes: [],
     reasonSummary: ["Commercial lot filing", "Early build signal", "Cedar Rapids corridor"]
   }
-];
+] satisfies OpportunitySeedRecord[]).map(withOpportunityIdentity);
 
 export const dashboardSnapshot: DashboardSnapshot = {
   topBuilders: builders,

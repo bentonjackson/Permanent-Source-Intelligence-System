@@ -17,8 +17,9 @@ const mockPayload = [
 export class MockSourceConnector implements SourceConnector {
   slug = "mock-structured";
   displayName = "Mock Structured Connector";
+  connectorType = "portal" as const;
 
-  async fetch(): Promise<FetchedRecord[]> {
+  async fetch(_context: ConnectorContext): Promise<FetchedRecord[]> {
     return mockPayload.map((payload, index) => ({
       sourceRecordId: `mock-${index}`,
       payload,
@@ -26,11 +27,11 @@ export class MockSourceConnector implements SourceConnector {
     }));
   }
 
-  async parse(records: FetchedRecord[]) {
+  async parse(records: FetchedRecord[], _context: ConnectorContext) {
     return records.map((record) => record.payload);
   }
 
-  async normalize(rows: Record<string, unknown>[]): Promise<NormalizedPermitInput[]> {
+  async normalize(rows: Record<string, unknown>[], _context: ConnectorContext): Promise<NormalizedPermitInput[]> {
     return rows.map((row) => ({
       dedupeHash: `mock:${String(row.permitNumber)}`,
       permitNumber: String(row.permitNumber),
@@ -50,7 +51,7 @@ export class MockSourceConnector implements SourceConnector {
     }));
   }
 
-  async deduplicate(records: NormalizedPermitInput[]) {
+  async deduplicate(records: NormalizedPermitInput[], _context: ConnectorContext) {
     return Array.from(new Map(records.map((record) => [record.dedupeHash, record])).values());
   }
 
@@ -70,7 +71,7 @@ export class MockSourceConnector implements SourceConnector {
       reliabilityScore: this.calculateSourceReliability(deduped),
       logs: [
         {
-          level: "info",
+          level: "info" as const,
           message: `Mock connector processed ${deduped.length} permit rows.`
         }
       ]

@@ -1,5 +1,23 @@
 const cedarRapidsAnchor = { lat: 41.9779, lng: -91.6656 };
 
+export const COUNTIES_NEAR_ME_LABEL = "Counties near me";
+
+export const cedarRapids75MileCounties = [
+  "Linn",
+  "Johnson",
+  "Benton",
+  "Buchanan",
+  "Black Hawk",
+  "Jones",
+  "Iowa",
+  "Cedar",
+  "Tama",
+  "Delaware",
+  "Washington"
+] as const;
+
+export const coreServiceCounties = ["Linn", "Johnson", "Benton", "Buchanan", "Black Hawk"] as const;
+
 export interface TerritoryDefinition {
   id: string;
   name: string;
@@ -32,21 +50,37 @@ export const seededTerritories: TerritoryDefinition[] = [
     cities: ["Cedar Rapids", "Vinton", "Waterloo", "Cedar Falls"]
   },
   {
-    id: "territory-radius-60",
-    name: "60 Mile Radius from Cedar Rapids",
+    id: "territory-radius-75",
+    name: "75 Mile Radius from Cedar Rapids",
     type: "radius",
-    counties: ["Linn", "Johnson", "Benton", "Buchanan", "Black Hawk"],
+    counties: [...cedarRapids75MileCounties],
     cities: [],
-    radiusMiles: 60
+    radiusMiles: 75
   }
 ];
 
 export function isPreferredCorridorCounty(county: string) {
-  return ["Linn", "Johnson", "Benton", "Buchanan", "Black Hawk"].includes(county);
+  return coreServiceCounties.includes(county as (typeof coreServiceCounties)[number]);
+}
+
+export function isSeventyFiveMileCounty(county: string) {
+  return cedarRapids75MileCounties.includes(county as (typeof cedarRapids75MileCounties)[number]);
+}
+
+export function getCountySelectorOptions() {
+  return [COUNTIES_NEAR_ME_LABEL, ...cedarRapids75MileCounties];
 }
 
 export function corridorBoostForCounty(county: string) {
-  return isPreferredCorridorCounty(county) ? 10 : -8;
+  if (isPreferredCorridorCounty(county)) {
+    return 10;
+  }
+
+  if (isSeventyFiveMileCounty(county)) {
+    return 4;
+  }
+
+  return -8;
 }
 
 export function getCedarRapidsAnchor() {

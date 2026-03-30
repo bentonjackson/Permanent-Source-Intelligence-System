@@ -1,8 +1,10 @@
 import { BuilderList } from "@/components/builders/builder-list";
 import { PageHeader } from "@/components/layout/page-header";
-import { builders } from "@/lib/sample-data";
+import { getBuilderRecords } from "@/lib/opportunities/live-data";
 
-export default function BuildersPage() {
+export default async function BuildersPage() {
+  const builders = await getBuilderRecords();
+
   return (
     <div className="space-y-6">
       <PageHeader
