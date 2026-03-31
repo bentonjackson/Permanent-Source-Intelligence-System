@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
 
+import { ActionSelect } from "@/components/ui/action-select";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getBuilderEntityPresentation } from "@/lib/entities/contact-identity";
@@ -50,15 +51,14 @@ export function BuilderList({ builders }: { builders: BuilderRecord[] }) {
                   <p className="mt-2 text-sm text-white/42">Related entity: {entity.relatedEntityName}</p>
                 ) : null}
                 <p className="mt-3 text-sm text-white/56">
-                  {builder.openOpportunities} open lots to work across {builder.counties.join(", ")}
+                  {builder.contractorMetrics.totalPermits} permits tracked • {builder.openOpportunities} open lots • {builder.counties.join(", ")}
                 </p>
               </div>
               <div className="flex items-center gap-3">
                 <div className="hidden flex-wrap justify-end gap-2 sm:flex">
                   <Badge tone="red">Priority {builder.leadScore}</Badge>
-                  <Badge tone="slate">{builder.pipelineStage}</Badge>
-                  <Badge tone={builder.preferredSalesName ? "slate" : "amber"}>
-                    {builder.contactQualityTier.replaceAll("_", " ")}
+                  <Badge tone={builder.contractorMetrics.outreachStatus === "partner" ? "green" : builder.contractorMetrics.outreachStatus === "contacted" ? "blue" : "amber"}>
+                    {builder.contractorMetrics.outreachStatus}
                   </Badge>
                 </div>
                 <ChevronDown className={`h-5 w-5 shrink-0 text-white/56 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
@@ -69,7 +69,7 @@ export function BuilderList({ builders }: { builders: BuilderRecord[] }) {
                 <div>
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <Stat label="Open Lots" value={String(builder.openOpportunities)} />
-                    <Stat label="Active Properties" value={String(builder.activeProperties)} />
+                    <Stat label="Permits (30d)" value={String(builder.contractorMetrics.permitsLast30Days)} />
                     <Stat label="Total Value" value={formatCurrency(builder.totalEstimatedValue || builder.totalImprovementValue)} />
                     <Stat label="Last Activity" value={formatDate(builder.lastActivityAt)} />
                   </div>
@@ -102,26 +102,36 @@ export function BuilderList({ builders }: { builders: BuilderRecord[] }) {
                   <div className="mt-4 space-y-2 text-sm text-white/58">
                     <p>Preferred sales name: {entity.displayName}</p>
                     <p>Legal entity: {builder.legalEntityName ?? "Unknown"}</p>
-                    <p>Aliases: {builder.aliases.length ? builder.aliases.join(", ") : "None stored"}</p>
                     <p>Role type: {builder.roleType.replaceAll("_", " ")}</p>
+                    <p>Outreach status: {builder.contractorMetrics.outreachStatus}</p>
+                    <p>Average job size: {formatCurrency(builder.contractorMetrics.avgProjectValue)}</p>
                     <p>Contact quality: {formatBand(builder.contactQualityBand)} • score {builder.contactQualityScore}</p>
-                    <p>Entity confidence: {builder.entityConfidenceScore}</p>
-                    <p>Role confidence: {builder.roleConfidenceScore}</p>
                     <p>Best contact: {builder.contact.email ?? builder.contact.phone ?? builder.preferredContactTarget ?? "Needs contact research"}</p>
-                    <p>Contractor registration: {builder.contractorRegistrationNumber ?? "Not found"} • {builder.contractorRegistrationStatus.replaceAll("_", " ")}</p>
                     <p>Builder heat: {builder.builderHeatScore}</p>
                     <p>Next best action: {builder.nextBestAction}</p>
-                    <p>Last seen area: {builder.lastSeenLocation}</p>
-                    <p>Open opportunities: {builder.openOpportunities}</p>
-                    <p>Counties active in: {builder.counties.join(", ")}</p>
-                    <p>Next follow-up: {formatDate(builder.nextFollowUpDate)}</p>
                   </div>
-                  <Link
-                    href={`/builders/${builder.id}`}
-                    className="text-link mt-6 inline-flex"
-                  >
-                    Open builder view
-                  </Link>
+                  <div className="mt-6 flex items-center gap-2">
+                    <Link
+                      href={`/builders/${builder.id}`}
+                      className="text-link inline-flex"
+                    >
+                      Open builder view
+                    </Link>
+                    <ActionSelect
+                      placeholder="More detail"
+                      onSelect={(value) => {
+                        if (value === "open") {
+                          window.location.href = `/builders/${builder.id}`;
+                        }
+                      }}
+                      options={[
+                        { label: `Aliases: ${builder.aliases.length ? builder.aliases.join(", ") : "None stored"}`, value: "aliases", disabled: true },
+                        { label: `Counties: ${builder.counties.join(", ")}`, value: "counties", disabled: true },
+                        { label: `Project types: ${builder.contractorMetrics.projectTypes.length ? builder.contractorMetrics.projectTypes.join(", ") : "Needs more permit detail"}`, value: "types", disabled: true },
+                        { label: "Open builder view", value: "open" }
+                      ]}
+                    />
+                  </div>
                 </div>
               </CardContent>
             ) : null}

@@ -333,6 +333,13 @@ model SourceSyncRun {
   fetchedCount   Int              @default(0)
   normalizedCount Int             @default(0)
   dedupedCount   Int              @default(0)
+  newRecordCount Int              @default(0)
+  updatedRecordCount Int          @default(0)
+  unchangedRecordCount Int        @default(0)
+  errorRecordCount Int            @default(0)
+  blockedCount   Int              @default(0)
+  completenessScore Int           @default(0)
+  driftScore     Int              @default(0)
   message        String?
   logs           SourceSyncLog[]
   rawRecords     RawRecord[]
@@ -362,7 +369,9 @@ model RawRecord {
   lastSeenAt  DateTime @default(now())
   changeStatus SourceRecordChangeStatus @default(NEW)
   parseStatus SourceRecordParseStatus   @default(PENDING)
+  recordVersion Int   @default(1)
   errorMessage String?
+  blockedReason String?
   payload     Json
   dedupeHash  String
   fetchedAt   DateTime
@@ -382,6 +391,7 @@ model Builder {
   company             Company?       @relation(fields: [companyId], references: [id], onDelete: SetNull)
   name                String
   normalizedName      String
+  builderIdentityKey  String?
   rawSourceName       String?
   rawSourceNames      String[]        @default([])
   preferredSalesName  String?
@@ -421,6 +431,7 @@ model Builder {
   reviewQueueItems    ReviewQueueItem[]
 
   @@unique([organizationId, normalizedName])
+  @@index([builderIdentityKey])
 }
 
 model BuilderAlias {
@@ -490,7 +501,9 @@ model Contact {
   lastName          String?
   companyName       String?
   email             String?
+  normalizedEmail   String?
   phone             String?
+  normalizedPhone   String?
   mobilePhone       String?
   officePhone       String?
   roleTitle         String?
@@ -507,6 +520,7 @@ model Contact {
   confidenceScore   Int            @default(0)
   qualityScore      Int            @default(0)
   qualityBand       ContactQualityBand @default(TIER_5)
+  contactSourceRank Int            @default(0)
   isPrimary         Boolean        @default(false)
   lastVerifiedAt    DateTime?
   lastEnrichedAt    DateTime?
@@ -516,12 +530,19 @@ model Contact {
   contactSnapshots  OpportunityContactSnapshot[] @relation("SnapshotPrimaryContact")
 
   @@index([opportunityId, isPrimary])
+  @@index([builderId, normalizedEmail])
+  @@index([companyId, normalizedEmail])
 }
 
 model Property {
   id           String    @id @default(cuid())
   address      String
   normalizedAddress String?
+  propertyIdentityKey String?
+  sourceFingerprint String?
+  sourceRecordVersion Int @default(1)
+  lastSourceChangedAt DateTime?
+  changeSummary Json?
   cityId       String?
   city         City?     @relation(fields: [cityId], references: [id], onDelete: SetNull)
   countyId     String?
@@ -538,6 +559,9 @@ model Property {
   notes        Note[]
   activities   Activity[]
   plotOpportunities PlotOpportunity[]
+
+  @@index([propertyIdentityKey])
+  @@index([normalizedAddress, cityId, countyId])
 }
 
 model PlotOpportunity {
@@ -554,6 +578,13 @@ model PlotOpportunity {
   source               Source?           @relation(fields: [sourceId], references: [id], onDelete: SetNull)
   assignedMembershipId String?
   assignedMembership   Membership?       @relation(fields: [assignedMembershipId], references: [id], onDelete: SetNull)
+  opportunityIdentityKey String?
+  sourceFingerprint    String?
+  sourceRecordVersion  Int               @default(1)
+  lastSourceChangedAt  DateTime?
+  scoreBreakdown       Json?
+  requiresReview       Boolean           @default(false)
+  duplicateRiskScore   Int               @default(0)
   currentStage         PipelineStage     @default(NEW)
   address              String?
   city                 String?
@@ -641,6 +672,9 @@ model PlotOpportunity {
 
   @@index([organizationId, opportunityScore])
   @@index([organizationId, currentStage, nextFollowUpAt])
+  @@index([opportunityIdentityKey])
+  @@index([organizationId, bidStatus, opportunityScore])
+  @@index([organizationId, currentStage, updatedAt])
 }
 
 model Parcel {
@@ -660,6 +694,11 @@ model Permit {
   property              Property?            @relation(fields: [propertyId], references: [id], onDelete: SetNull)
   builderId             String?
   builder               Builder?             @relation(fields: [builderId], references: [id], onDelete: SetNull)
+  permitIdentityKey     String?
+  sourceFingerprint     String?
+  sourceRecordVersion   Int                  @default(1)
+  lastSourceChangedAt   DateTime?
+  changeSummary         Json?
   permitNumber          String
   permitType            String
   permitSubtype         String?
@@ -680,6 +719,8 @@ model Permit {
   plotOpportunities     PlotOpportunity[]
 
   @@unique([permitNumber, sourceUrl])
+  @@index([permitIdentityKey])
+  @@index([issueDate, permitStatus])
 }
 
 model Lead {
@@ -891,6 +932,10 @@ model SourceHealthCheck {
   parseFailureCount Int              @default(0)
   missingFieldCount Int              @default(0)
   duplicateCount    Int              @default(0)
+  blockedCount      Int              @default(0)
+  completenessScore Int              @default(0)
+  healthScore       Int              @default(0)
+  warningFlags      Json?
   errorMessage      String?
   notes             String?
 }

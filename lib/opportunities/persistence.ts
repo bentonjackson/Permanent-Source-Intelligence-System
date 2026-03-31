@@ -317,6 +317,13 @@ export function opportunityToPersistenceData(opportunity: PlotOpportunity, organ
     id: opportunity.id,
     organizationId,
     assignedMembershipId: opportunity.assignedMembershipId,
+    opportunityIdentityKey: opportunity.opportunityIdentityKey || null,
+    sourceFingerprint: opportunity.sourceFingerprint || null,
+    sourceRecordVersion: opportunity.sourceRecordVersion,
+    lastSourceChangedAt: toNullableDate(opportunity.lastSourceChangedAt),
+    scoreBreakdown: toJsonValue(opportunity.scoreBreakdown),
+    requiresReview: opportunity.requiresReview,
+    duplicateRiskScore: opportunity.duplicateRiskScore,
     address: opportunity.address || null,
     city: opportunity.city || null,
     county: opportunity.county || null,
@@ -398,7 +405,20 @@ export function opportunityToPersistenceData(opportunity: PlotOpportunity, organ
     sourceEvidence: toJsonValue({
       reasonSummary: opportunity.reasonSummary,
       sourceUrl: opportunity.sourceUrl,
-      sourceName: opportunity.sourceName
+      sourceName: opportunity.sourceName,
+      leadType: opportunity.leadType,
+      jobFit: opportunity.jobFit,
+      projectStageStatus: opportunity.projectStageStatus,
+      opportunityReason: opportunity.opportunityReason,
+      recencyBucket: opportunity.recencyBucket,
+      marketCluster: opportunity.marketCluster,
+      addressState: opportunity.addressState,
+      addressZip: opportunity.addressZip,
+      neighborhood: opportunity.neighborhood,
+      propertyIdentityKey: opportunity.propertyIdentityKey,
+      permitIdentityKey: opportunity.permitIdentityKey,
+      builderIdentityKey: opportunity.builderIdentityKey,
+      sourceChangeSummary: opportunity.sourceChangeSummary
     })
   };
 }
@@ -421,16 +441,65 @@ function parseNotes(value: PrismaPlotOpportunity["notes"]) {
 
 export function persistenceRowToOpportunity(row: PrismaPlotOpportunity): PlotOpportunity {
   const notes = parseNotes(row.notes);
+  const sourceEvidence =
+    row.sourceEvidence && typeof row.sourceEvidence === "object"
+      ? (row.sourceEvidence as {
+          reasonSummary?: unknown[];
+          leadType?: PlotOpportunity["leadType"];
+          jobFit?: PlotOpportunity["jobFit"];
+          projectStageStatus?: PlotOpportunity["projectStageStatus"];
+          opportunityReason?: PlotOpportunity["opportunityReason"];
+          recencyBucket?: PlotOpportunity["recencyBucket"];
+          marketCluster?: string | null;
+          addressState?: string | null;
+          addressZip?: string | null;
+          neighborhood?: string | null;
+          propertyIdentityKey?: string | null;
+          permitIdentityKey?: string | null;
+          builderIdentityKey?: string | null;
+          sourceChangeSummary?: string[];
+        })
+      : null;
   const reasonSummary =
-    row.sourceEvidence && typeof row.sourceEvidence === "object" && row.sourceEvidence && "reasonSummary" in row.sourceEvidence
-      ? Array.isArray((row.sourceEvidence as { reasonSummary?: unknown[] }).reasonSummary)
-        ? (row.sourceEvidence as { reasonSummary?: unknown[] }).reasonSummary!.map((entry) => String(entry))
+    sourceEvidence && "reasonSummary" in sourceEvidence
+      ? Array.isArray(sourceEvidence.reasonSummary)
+        ? sourceEvidence.reasonSummary!.map((entry) => String(entry))
         : []
       : [];
 
   return {
     id: row.id,
     assignedMembershipId: row.assignedMembershipId ?? null,
+    opportunityIdentityKey: row.opportunityIdentityKey ?? null,
+    propertyIdentityKey: sourceEvidence?.propertyIdentityKey ?? null,
+    permitIdentityKey: sourceEvidence?.permitIdentityKey ?? null,
+    builderIdentityKey: sourceEvidence?.builderIdentityKey ?? null,
+    sourceFingerprint: row.sourceFingerprint ?? null,
+    sourceRecordVersion: row.sourceRecordVersion ?? 1,
+    lastSourceChangedAt: row.lastSourceChangedAt?.toISOString() ?? null,
+    sourceChangeSummary:
+      sourceEvidence && Array.isArray(sourceEvidence.sourceChangeSummary)
+        ? sourceEvidence.sourceChangeSummary.map((entry) => String(entry))
+        : [],
+    scoreBreakdown: Array.isArray(row.scoreBreakdown)
+      ? row.scoreBreakdown
+          .map((entry) =>
+            entry && typeof entry === "object" && "label" in entry && "value" in entry
+              ? {
+                  label: String((entry as { label: unknown }).label),
+                  value: Number((entry as { value: unknown }).value)
+                }
+              : null
+          )
+          .filter(
+            (
+              entry
+            ): entry is PlotOpportunity["scoreBreakdown"][number] =>
+              entry !== null && Number.isFinite(entry.value)
+          )
+      : [],
+    requiresReview: row.requiresReview,
+    duplicateRiskScore: row.duplicateRiskScore,
     address: row.address ?? "",
     city: row.city ?? "",
     county: row.county ?? "",
@@ -472,11 +541,20 @@ export function persistenceRowToOpportunity(row: PrismaPlotOpportunity): PlotOpp
     readinessToContact: readinessToContactFromPrisma[row.readinessToContact],
     clusterId: row.clusterId ?? null,
     signalDate: row.signalDate.toISOString(),
+    addressState: sourceEvidence?.addressState ?? "IA",
+    addressZip: sourceEvidence?.addressZip ?? null,
+    neighborhood: sourceEvidence?.neighborhood ?? null,
     estimatedProjectValue: null,
     landValue: null,
     improvementValue: null,
     classification: classificationFromPrisma[row.classification],
     projectSegment: projectSegmentFromPrisma[row.projectSegment],
+    leadType: sourceEvidence?.leadType ?? "unknown",
+    jobFit: sourceEvidence?.jobFit ?? "low",
+    projectStageStatus: sourceEvidence?.projectStageStatus ?? "new",
+    opportunityReason: sourceEvidence?.opportunityReason ?? "unknown",
+    recencyBucket: sourceEvidence?.recencyBucket ?? "older",
+    marketCluster: sourceEvidence?.marketCluster ?? row.clusterId ?? null,
     opportunityType: opportunityTypeFromPrisma[row.opportunityType],
     buildReadiness: buildReadinessFromPrisma[row.buildReadiness],
     vacancyConfidence: row.vacancyConfidence,

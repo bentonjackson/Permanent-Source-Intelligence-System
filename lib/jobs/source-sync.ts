@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import {
   BidStatus,
   Prisma,
@@ -11,8 +9,21 @@ import {
 
 import { DEFAULT_ORGANIZATION_SLUG, ensureBaselineMetadata } from "@/lib/app/defaults";
 import { getConnector } from "@/lib/connectors/registry";
+import {
+  buildBuilderIdentityKey,
+  buildOpportunityIdentityKey,
+  buildPermitIdentityKey,
+  buildPropertyIdentityKey,
+  buildSourceFingerprint,
+  summarizeChangedFields
+} from "@/lib/connectors/shared/identity";
 import { normalizeBuilderName, normalizeWhitespace } from "@/lib/connectors/shared/normalization";
 import { NormalizedPermitInput } from "@/lib/connectors/shared/types";
+import {
+  assessSourceDrift,
+  computeSourceHealthScore,
+  validateNormalizedPermitRecord
+} from "@/lib/connectors/shared/validation";
 import { prisma } from "@/lib/db/client";
 import { runBuilderEnrichment } from "@/lib/enrichment/builder-enrichment";
 import { resolveEntityIdentity } from "@/lib/entities/contact-identity";
@@ -42,12 +53,18 @@ function toJson(value: Record<string, unknown>) {
 
 function buildRecordKey(record: NormalizedPermitInput) {
   return normalizeWhitespace(
-    record.permitNumber || record.parcelNumber || record.address || record.sourceUrl || record.dedupeHash
+    buildPermitIdentityKey(record) ||
+      buildPropertyIdentityKey(record) ||
+      record.permitNumber ||
+      record.parcelNumber ||
+      record.address ||
+      record.sourceUrl ||
+      record.dedupeHash
   ) || record.dedupeHash;
 }
 
 function buildContentHash(record: NormalizedPermitInput) {
-  return createHash("sha256").update(JSON.stringify(record.rawPayload ?? {})).digest("hex");
+  return buildSourceFingerprint(record.rawPayload ?? {});
 }
 
 function sourceRunStatusFromCount(count: number) {
@@ -99,6 +116,10 @@ async function createSourceHealthCheck(input: {
   parseFailureCount?: number;
   missingFieldCount?: number;
   duplicateCount?: number;
+  blockedCount?: number;
+  completenessScore?: number;
+  healthScore?: number;
+  warningFlags?: string[] | null;
   errorMessage?: string | null;
   notes?: string | null;
 }) {
@@ -113,6 +134,10 @@ async function createSourceHealthCheck(input: {
       parseFailureCount: input.parseFailureCount ?? 0,
       missingFieldCount: input.missingFieldCount ?? 0,
       duplicateCount: input.duplicateCount ?? 0,
+      blockedCount: input.blockedCount ?? 0,
+      completenessScore: input.completenessScore ?? 0,
+      healthScore: input.healthScore ?? 0,
+      warningFlags: input.warningFlags ?? Prisma.JsonNull,
       errorMessage: input.errorMessage ?? null,
       notes: input.notes ?? null
     }
@@ -283,6 +308,8 @@ function mergeJsonNotes(values: Array<Prisma.JsonValue | null | undefined>) {
 }
 
 function buildOpportunityDuplicateKey(opportunity: {
+  opportunityIdentityKey?: string | null;
+  propertyIdentityKey?: string | null;
   permitId: string | null;
   sourceId: string | null;
   permitNumber: string | null;
@@ -294,8 +321,16 @@ function buildOpportunityDuplicateKey(opportunity: {
   normalizedEntityName: string | null;
   signalDate: Date;
 }) {
+  if (opportunity.opportunityIdentityKey) {
+    return `identity:${opportunity.opportunityIdentityKey}`;
+  }
+
   if (opportunity.permitId) {
     return `permit:${opportunity.permitId}`;
+  }
+
+  if (opportunity.propertyIdentityKey && opportunity.normalizedEntityName) {
+    return `property-entity:${opportunity.propertyIdentityKey}:${normalizeWhitespace(opportunity.normalizedEntityName)?.toLowerCase()}`;
   }
 
   if (opportunity.sourceId && opportunity.permitNumber) {
@@ -522,6 +557,12 @@ async function deduplicatePlotOpportunities(organizationId: string) {
         builderId: firstNonEmpty(canonical.builderId, ...duplicates.map((item) => item.builderId)),
         sourceId: firstNonEmpty(canonical.sourceId, ...duplicates.map((item) => item.sourceId)),
         assignedMembershipId: firstNonEmpty(canonical.assignedMembershipId, ...duplicates.map((item) => item.assignedMembershipId)),
+        opportunityIdentityKey: firstNonEmpty(canonical.opportunityIdentityKey, ...duplicates.map((item) => item.opportunityIdentityKey)),
+        sourceFingerprint: firstNonEmpty(canonical.sourceFingerprint, ...duplicates.map((item) => item.sourceFingerprint)),
+        sourceRecordVersion: Math.max(canonical.sourceRecordVersion, ...duplicates.map((item) => item.sourceRecordVersion)),
+        lastSourceChangedAt: maxDate(canonical.lastSourceChangedAt, ...duplicates.map((item) => item.lastSourceChangedAt)),
+        requiresReview: [canonical, ...duplicates].some((item) => item.requiresReview),
+        duplicateRiskScore: Math.max(canonical.duplicateRiskScore, ...duplicates.map((item) => item.duplicateRiskScore)),
         address: firstNonEmpty(canonical.address, ...duplicates.map((item) => item.address)),
         city: firstNonEmpty(canonical.city, ...duplicates.map((item) => item.city)),
         county: firstNonEmpty(canonical.county, ...duplicates.map((item) => item.county)),
@@ -578,6 +619,11 @@ async function deduplicatePlotOpportunities(organizationId: string) {
         notes: mergeJsonNotes([canonical.notes, ...duplicates.map((item) => item.notes)]),
         closedAt: maxDate(canonical.closedAt, ...duplicates.map((item) => item.closedAt)),
         signalDate: minDate(canonical.signalDate, ...duplicates.map((item) => item.signalDate)) ?? canonical.signalDate,
+        scoreBreakdown:
+          (Array.isArray(canonical.scoreBreakdown) && canonical.scoreBreakdown.length
+            ? canonical.scoreBreakdown
+            : duplicates.find((item) => Array.isArray(item.scoreBreakdown) && item.scoreBreakdown.length)?.scoreBreakdown) ??
+          Prisma.JsonNull,
         bidStatus:
           [...group].sort((left, right) => bidStatusPriority[right.bidStatus] - bidStatusPriority[left.bidStatus])[0]?.bidStatus ??
           canonical.bidStatus
@@ -696,6 +742,7 @@ async function upsertBuilderRecord(organizationId: string, record: NormalizedPer
   const identity = resolveEntityIdentity(record);
   const rawName = identity.rawSourceName ?? "";
   const normalizedName = identity.normalizedEntityName ?? normalizeBuilderName(rawName);
+  const builderIdentityKey = buildBuilderIdentityKey(record);
 
   if (!normalizedName) {
     return null;
@@ -705,7 +752,7 @@ async function upsertBuilderRecord(organizationId: string, record: NormalizedPer
     where: {
       organizationId_normalizedName: {
         organizationId,
-        normalizedName
+      normalizedName
       }
     },
     update: {
@@ -733,11 +780,12 @@ async function upsertBuilderRecord(organizationId: string, record: NormalizedPer
   const builder = await prisma.builder.upsert({
     where: {
       organizationId_normalizedName: {
-        organizationId,
-        normalizedName
+      organizationId,
+      normalizedName
       }
     },
     update: {
+      builderIdentityKey,
       companyId: company.id,
       name: identity.legalEntityName || rawName || normalizedName,
       rawSourceName: identity.rawSourceName,
@@ -752,6 +800,7 @@ async function upsertBuilderRecord(organizationId: string, record: NormalizedPer
       companyId: company.id,
       name: identity.legalEntityName || rawName || normalizedName,
       normalizedName,
+      builderIdentityKey,
       rawSourceName: identity.rawSourceName,
       preferredSalesName: identity.preferredSalesName,
       roleType: identity.roleType.toUpperCase() as never,
@@ -788,9 +837,24 @@ async function upsertBuilderRecord(organizationId: string, record: NormalizedPer
 async function upsertPropertyRecord(record: NormalizedPermitInput) {
   const { countyId, cityId } = await ensureCityAndCounty(record.city, record.county);
   const normalizedAddress = normalizeWhitespace(record.address);
+  const propertyIdentityKey = buildPropertyIdentityKey(record);
+  const sourceFingerprint = buildSourceFingerprint({
+    address: normalizedAddress || record.address,
+    city: record.city,
+    county: record.county,
+    state: record.state || "IA",
+    zip: record.zip ?? null,
+    subdivision: record.subdivision ?? null,
+    lotNumber: record.lotNumber ?? null,
+    parcelNumber: record.parcelNumber ?? null,
+    landValue: record.landValue ?? null,
+    improvementValue: record.improvementValue ?? null
+  });
   const propertyData = {
     address: normalizedAddress || record.address,
     normalizedAddress,
+    propertyIdentityKey,
+    sourceFingerprint,
     cityId,
     countyId,
     state: record.state || "IA",
@@ -802,40 +866,84 @@ async function upsertPropertyRecord(record: NormalizedPermitInput) {
     improvementValue: toDecimal(record.improvementValue)
   };
 
-  let property =
-    record.parcelNumber
-      ? await prisma.property.upsert({
-          where: {
-            parcelNumber: record.parcelNumber
-          },
-          update: propertyData,
-          create: {
-            ...propertyData,
-            parcel: {
-              create: {
-                parcelNumber: record.parcelNumber
-              }
+  let property = await prisma.property.findFirst({
+    where: record.parcelNumber
+      ? {
+          OR: [
+            {
+              parcelNumber: record.parcelNumber
+            },
+            {
+              propertyIdentityKey
             }
-          }
-        })
-      : await prisma.property.findFirst({
-          where: {
-            normalizedAddress,
-            cityId,
-            countyId
-          }
-        });
+          ]
+        }
+      : {
+          OR: [
+            {
+              propertyIdentityKey
+            },
+            {
+              normalizedAddress,
+              cityId,
+              countyId
+            }
+          ]
+        }
+  });
 
   if (!property) {
     property = await prisma.property.create({
-      data: propertyData
+      data: {
+        ...propertyData,
+        sourceRecordVersion: 1,
+        lastSourceChangedAt: new Date()
+      }
     });
-  } else if (!record.parcelNumber) {
+  } else {
+    const changedFields = summarizeChangedFields(
+      {
+        address: property.address,
+        normalizedAddress: property.normalizedAddress,
+        cityId: property.cityId,
+        countyId: property.countyId,
+        state: property.state,
+        zip: property.zip,
+        subdivision: property.subdivision,
+        lotNumber: property.lotNumber,
+        parcelNumber: property.parcelNumber,
+        landValue: property.landValue?.toString() ?? null,
+        improvementValue: property.improvementValue?.toString() ?? null
+      },
+      {
+        ...propertyData,
+        landValue: record.landValue ?? null,
+        improvementValue: record.improvementValue ?? null
+      },
+      [
+        "address",
+        "normalizedAddress",
+        "cityId",
+        "countyId",
+        "state",
+        "zip",
+        "subdivision",
+        "lotNumber",
+        "parcelNumber",
+        "landValue",
+        "improvementValue"
+      ]
+    );
     property = await prisma.property.update({
       where: {
         id: property.id
       },
-      data: propertyData
+      data: {
+        ...propertyData,
+        sourceRecordVersion: changedFields.length ? property.sourceRecordVersion + 1 : property.sourceRecordVersion,
+        lastSourceChangedAt: changedFields.length ? new Date() : property.lastSourceChangedAt,
+        changeSummary: changedFields.length ? changedFields : Prisma.JsonNull
+      }
     });
   }
 
@@ -875,7 +983,8 @@ async function upsertCapturedSignalRecord(options: {
     select: {
       id: true,
       contentHash: true,
-      firstSeenAt: true
+      firstSeenAt: true,
+      recordVersion: true
     }
   });
 
@@ -902,7 +1011,10 @@ async function upsertCapturedSignalRecord(options: {
           lastSeenAt: now,
           changeStatus,
           parseStatus: SourceRecordParseStatus.PARSED,
-          errorMessage: null
+          recordVersion:
+            changeStatus === SourceRecordChangeStatus.UPDATED ? existing.recordVersion + 1 : existing.recordVersion,
+          errorMessage: null,
+          blockedReason: null
         }
       })
     : prisma.rawRecord.create({
@@ -917,6 +1029,7 @@ async function upsertCapturedSignalRecord(options: {
           lastSeenAt: now,
           changeStatus,
           parseStatus: SourceRecordParseStatus.PARSED,
+          recordVersion: 1,
           payload: toJson(options.record.rawPayload),
           dedupeHash: options.record.dedupeHash,
           fetchedAt: now
@@ -930,10 +1043,30 @@ async function upsertPermitRecord(options: {
   builderId: string | null;
   record: NormalizedPermitInput;
 }) {
+  const permitIdentityKey = buildPermitIdentityKey(options.record);
+  const sourceFingerprint = buildSourceFingerprint({
+    permitNumber: options.record.permitNumber,
+    permitType: options.record.permitType,
+    permitSubtype: options.record.permitSubtype ?? null,
+    permitStatus: options.record.permitStatus,
+    applicationDate: options.record.applicationDate ?? null,
+    issueDate: options.record.issueDate ?? null,
+    projectDescription: options.record.projectDescription ?? null,
+    estimatedProjectValue: options.record.estimatedProjectValue ?? null,
+    landValue: options.record.landValue ?? null,
+    improvementValue: options.record.improvementValue ?? null,
+    ownerName: options.record.ownerName ?? null,
+    contractorName: options.record.contractorName ?? null,
+    developerName: options.record.developerName ?? null,
+    sourceUrl: options.record.sourceUrl,
+    classification: options.record.classification
+  });
   const permitData = {
     sourceId: options.sourceDbId,
     propertyId: options.propertyId,
     builderId: options.builderId,
+    permitIdentityKey,
+    sourceFingerprint,
     permitNumber: options.record.permitNumber,
     permitType: options.record.permitType,
     permitSubtype: options.record.permitSubtype ?? null,
@@ -964,19 +1097,66 @@ async function upsertPermitRecord(options: {
       ]
     },
     select: {
-      id: true
+      id: true,
+      sourceFingerprint: true,
+      sourceRecordVersion: true,
+      permitStatus: true,
+      contractorName: true,
+      estimatedProjectValue: true,
+      sourceUrl: true,
+      projectDescription: true
     }
   });
+
+  const changedFields = existingPermit
+    ? summarizeChangedFields(
+        {
+          permitStatus: existingPermit.permitStatus,
+          contractorName: existingPermit.contractorName,
+          estimatedProjectValue: existingPermit.estimatedProjectValue?.toString() ?? null,
+          sourceUrl: existingPermit.sourceUrl,
+          projectDescription: existingPermit.projectDescription
+        },
+        {
+          permitStatus: options.record.permitStatus,
+          contractorName: options.record.contractorName ?? null,
+          estimatedProjectValue: options.record.estimatedProjectValue ?? null,
+          sourceUrl: options.record.sourceUrl,
+          projectDescription: options.record.projectDescription ?? null
+        },
+        [
+          "permitStatus",
+          "contractorName",
+          "estimatedProjectValue",
+          "sourceUrl",
+          "projectDescription"
+        ]
+      )
+    : [];
 
   return existingPermit
     ? prisma.permit.update({
         where: {
           id: existingPermit.id
         },
-        data: permitData
+        data: {
+          ...permitData,
+          sourceRecordVersion:
+            existingPermit.sourceFingerprint === sourceFingerprint
+              ? existingPermit.sourceRecordVersion
+              : existingPermit.sourceRecordVersion + 1,
+          lastSourceChangedAt:
+            existingPermit.sourceFingerprint === sourceFingerprint ? undefined : new Date(),
+          changeSummary: changedFields.length ? changedFields : Prisma.JsonNull
+        }
       })
     : prisma.permit.create({
-        data: permitData
+        data: {
+          ...permitData,
+          sourceRecordVersion: 1,
+          lastSourceChangedAt: new Date(),
+          changeSummary: Prisma.JsonNull
+        }
       });
 }
 
@@ -1001,10 +1181,36 @@ async function upsertOpportunityLead(options: {
   record: NormalizedPermitInput;
 }) {
   const opportunity = mapNormalizedPermitToOpportunity(options.record);
+  const opportunityIdentityKey = buildOpportunityIdentityKey(options.record);
+  const propertyIdentityKey = buildPropertyIdentityKey(options.record);
+  const permitIdentityKey = buildPermitIdentityKey(options.record);
+  const builderIdentityKey = buildBuilderIdentityKey(options.record);
+  const sourceFingerprint = buildSourceFingerprint({
+    address: options.record.address,
+    city: options.record.city,
+    county: options.record.county,
+    parcelNumber: options.record.parcelNumber ?? null,
+    permitNumber: options.record.permitNumber,
+    permitStatus: options.record.permitStatus,
+    issueDate: options.record.issueDate ?? null,
+    applicationDate: options.record.applicationDate ?? null,
+    projectDescription: options.record.projectDescription ?? null,
+    estimatedProjectValue: options.record.estimatedProjectValue ?? null,
+    classification: options.record.classification,
+    preferredSalesName: options.builder?.preferredSalesName ?? opportunity.preferredSalesName
+  });
   const persistenceData = opportunityToPersistenceData(
     {
       ...opportunity,
       assignedMembershipId: null,
+      opportunityIdentityKey,
+      propertyIdentityKey,
+      permitIdentityKey,
+      builderIdentityKey,
+      sourceFingerprint,
+      sourceRecordVersion: 1,
+      lastSourceChangedAt: new Date().toISOString(),
+      sourceChangeSummary: [],
       assignedRep: "Open Territory",
       builderId: options.builder?.id ?? opportunity.builderId,
       builderName: options.builder?.name ?? opportunity.builderName,
@@ -1022,6 +1228,69 @@ async function upsertOpportunityLead(options: {
     },
     options.organizationId
   );
+  const existingOpportunity = await prisma.plotOpportunity.findFirst({
+    where: {
+      organizationId: options.organizationId,
+      OR: [
+        {
+          opportunityIdentityKey
+        },
+        {
+          permitId: options.permitId
+        },
+        {
+          id: opportunity.id
+        }
+      ]
+    },
+    select: {
+      id: true,
+      sourceFingerprint: true,
+      sourceRecordVersion: true,
+      address: true,
+      city: true,
+      county: true,
+      permitNumber: true,
+      builderName: true,
+      preferredSalesName: true,
+      opportunityScore: true,
+      signalDate: true
+    }
+  });
+  const changedFields = existingOpportunity
+    ? summarizeChangedFields(
+        {
+          address: existingOpportunity.address,
+          city: existingOpportunity.city,
+          county: existingOpportunity.county,
+          permitNumber: existingOpportunity.permitNumber,
+          builderName: existingOpportunity.builderName,
+          preferredSalesName: existingOpportunity.preferredSalesName,
+          opportunityScore: existingOpportunity.opportunityScore,
+          signalDate: existingOpportunity.signalDate.toISOString()
+        },
+        {
+          address: opportunity.address,
+          city: opportunity.city,
+          county: opportunity.county,
+          permitNumber: opportunity.permitNumber,
+          builderName: options.builder?.name ?? opportunity.builderName,
+          preferredSalesName: options.builder?.preferredSalesName ?? opportunity.preferredSalesName,
+          opportunityScore: opportunity.opportunityScore,
+          signalDate: opportunity.signalDate
+        },
+        [
+          "address",
+          "city",
+          "county",
+          "permitNumber",
+          "builderName",
+          "preferredSalesName",
+          "opportunityScore",
+          "signalDate"
+        ]
+      )
+    : [];
   const {
     id: _ignoredId,
     organizationId: _ignoredOrganizationId,
@@ -1057,38 +1326,62 @@ async function upsertOpportunityLead(options: {
     closedAt: _ignoredClosedAt,
     ...updateData
   } = persistenceData;
+  const sourceEvidence =
+    updateData.sourceEvidence && typeof updateData.sourceEvidence === "object"
+      ? (updateData.sourceEvidence as Record<string, unknown>)
+      : {};
+  const baseData = {
+    ...updateData,
+    opportunityIdentityKey,
+    sourceFingerprint,
+    sourceRecordVersion:
+      existingOpportunity?.sourceFingerprint === sourceFingerprint
+        ? existingOpportunity.sourceRecordVersion
+        : (existingOpportunity?.sourceRecordVersion ?? 0) + 1,
+    lastSourceChangedAt:
+      existingOpportunity?.sourceFingerprint === sourceFingerprint ? undefined : new Date(),
+    requiresReview:
+      !opportunity.preferredSalesName || opportunity.contactQualityTier === "research_required",
+    duplicateRiskScore:
+      opportunity.address && !opportunity.parcelNumber
+        ? 30
+        : opportunity.normalizedEntityName && !opportunity.preferredSalesName
+          ? 45
+          : 10,
+    propertyId: options.propertyId,
+    permitId: options.permitId,
+    builderId: options.builder?.id ?? null,
+    sourceId: options.sourceDbId,
+    address: opportunity.address,
+    city: opportunity.city,
+    county: opportunity.county,
+    subdivision: opportunity.subdivision,
+    parcelNumber: opportunity.parcelNumber,
+    lotNumber: opportunity.lotNumber,
+    builderName: options.builder?.name ?? opportunity.builderName,
+    scoreBreakdown: opportunity.scoreBreakdown,
+    sourceEvidence: toJson({
+      ...sourceEvidence,
+      sourceChangeSummary: changedFields,
+      propertyIdentityKey,
+      permitIdentityKey,
+      builderIdentityKey
+    })
+  };
 
-  return prisma.plotOpportunity.upsert({
-    where: {
-      id: opportunity.id
-    },
-    update: {
-      ...updateData,
-      propertyId: options.propertyId,
-      permitId: options.permitId,
-      builderId: options.builder?.id ?? null,
-      sourceId: options.sourceDbId,
-      address: opportunity.address,
-      city: opportunity.city,
-      county: opportunity.county,
-      subdivision: opportunity.subdivision,
-      parcelNumber: opportunity.parcelNumber,
-      lotNumber: opportunity.lotNumber,
-      builderName: options.builder?.name ?? opportunity.builderName
-    },
-    create: {
+  if (existingOpportunity) {
+    return prisma.plotOpportunity.update({
+      where: {
+        id: existingOpportunity.id
+      },
+      data: baseData
+    });
+  }
+
+  return prisma.plotOpportunity.create({
+    data: {
       ...persistenceData,
-      propertyId: options.propertyId,
-      permitId: options.permitId,
-      builderId: options.builder?.id ?? null,
-      sourceId: options.sourceDbId,
-      address: opportunity.address,
-      city: opportunity.city,
-      county: opportunity.county,
-      subdivision: opportunity.subdivision,
-      parcelNumber: opportunity.parcelNumber,
-      lotNumber: opportunity.lotNumber,
-      builderName: options.builder?.name ?? opportunity.builderName
+      ...baseData
     }
   });
 }
@@ -1218,6 +1511,12 @@ async function persistNormalizedRecords(options: {
   let dedupedCount = 0;
   let parseFailureCount = 0;
   let missingFieldCount = 0;
+  let blockedCount = 0;
+  let completenessScoreTotal = 0;
+  let newRecordCount = 0;
+  let updatedRecordCount = 0;
+  let unchangedRecordCount = 0;
+  let errorRecordCount = 0;
 
   for (const record of options.normalized) {
     const capturedSignal = await upsertCapturedSignalRecord({
@@ -1225,6 +1524,48 @@ async function persistNormalizedRecords(options: {
       runId: options.runId,
       record
     });
+    const validation = validateNormalizedPermitRecord(record);
+    completenessScoreTotal += validation.completenessScore;
+
+    if (capturedSignal.changeStatus === SourceRecordChangeStatus.NEW) {
+      newRecordCount += 1;
+    } else if (capturedSignal.changeStatus === SourceRecordChangeStatus.UPDATED) {
+      updatedRecordCount += 1;
+    } else if (capturedSignal.changeStatus === SourceRecordChangeStatus.UNCHANGED) {
+      unchangedRecordCount += 1;
+    }
+
+    if (!validation.isValid) {
+      blockedCount += 1;
+      errorRecordCount += 1;
+      missingFieldCount += validation.blockedReasons.length;
+
+      await prisma.rawRecord.update({
+        where: {
+          id: capturedSignal.id
+        },
+        data: {
+          parseStatus: SourceRecordParseStatus.SKIPPED,
+          blockedReason: validation.blockedReasons.join(" "),
+          errorMessage: validation.blockedReasons.join(" ")
+        }
+      });
+
+      await upsertReviewQueueItem(prisma, {
+        organizationId: options.organizationId,
+        reviewType: ReviewQueueType.MISSING_FIELD,
+        title: "Blocked malformed source record",
+        details: record.address || record.parcelNumber || record.permitNumber,
+        rationale: validation.blockedReasons.join(" "),
+        sourceId: options.sourceDbId,
+        rawRecordId: capturedSignal.id,
+        sourceUrl: record.sourceUrl,
+        fingerprint: `${options.sourceDbId}:${record.dedupeHash}:blocked`,
+        confidenceScore: Math.max(0, validation.completenessScore - 20),
+        priority: 92
+      });
+      continue;
+    }
 
     try {
       const property = await upsertPropertyRecord(record);
@@ -1257,7 +1598,8 @@ async function persistNormalizedRecords(options: {
         data: {
           permitId: permit.id,
           parseStatus: SourceRecordParseStatus.PARSED,
-          errorMessage: null
+          errorMessage: null,
+          blockedReason: null
         }
       });
 
@@ -1280,6 +1622,7 @@ async function persistNormalizedRecords(options: {
       dedupedCount += 1;
     } catch (error) {
       parseFailureCount += 1;
+      errorRecordCount += 1;
       await prisma.rawRecord.update({
         where: {
           id: capturedSignal.id
@@ -1320,8 +1663,15 @@ async function persistNormalizedRecords(options: {
 
   return {
     dedupedCount,
+    newRecordCount,
+    updatedRecordCount,
+    unchangedRecordCount,
+    errorRecordCount,
     parseFailureCount,
     missingFieldCount,
+    blockedCount,
+    completenessScore:
+      options.normalized.length > 0 ? Math.round(completenessScoreTotal / options.normalized.length) : 0,
     duplicatePropertiesDeleted: cleanup.deletedProperties,
     duplicateOpportunitiesDeleted: cleanup.deletedOpportunities,
     builderIds: [...builderIds]
@@ -1343,6 +1693,20 @@ async function executeConnectorSync(sourceDefinitionId: string) {
         organizationId: baseline.organizationId,
         slug: sourceDefinition.slug
       }
+    }
+  });
+  const previousSuccessfulRun = await prisma.sourceSyncRun.findFirst({
+    where: {
+      sourceId: source.id,
+      status: {
+        in: [SourceSyncStatus.success, SourceSyncStatus.warning]
+      },
+      finishedAt: {
+        not: null
+      }
+    },
+    orderBy: {
+      startedAt: "desc"
     }
   });
 
@@ -1399,7 +1763,33 @@ async function executeConnectorSync(sourceDefinitionId: string) {
         builderIds: persisted.builderIds
       });
     }
-    const status = sourceRunStatusFromCount(result.normalized.length);
+    const driftAssessment = assessSourceDrift({
+      previousNormalizedCount: previousSuccessfulRun?.normalizedCount ?? null,
+      previousCompletenessScore: previousSuccessfulRun?.completenessScore ?? null,
+      previousErrorRate:
+        previousSuccessfulRun && previousSuccessfulRun.fetchedCount > 0
+          ? previousSuccessfulRun.errorRecordCount / previousSuccessfulRun.fetchedCount
+          : null,
+      currentFetchedCount: result.fetched.length,
+      currentNormalizedCount: result.normalized.length,
+      currentCompletenessScore: persisted.completenessScore,
+      currentErrorCount: persisted.errorRecordCount
+    });
+    const status =
+      driftAssessment.warningFlags.length > 0
+        ? SourceSyncStatus.warning
+        : sourceRunStatusFromCount(result.normalized.length);
+    const healthScore = computeSourceHealthScore({
+      availabilityScore:
+        status === SourceSyncStatus.success ? 96 : status === SourceSyncStatus.warning ? 68 : 18,
+      completenessScore: persisted.completenessScore,
+      freshnessScore: Math.min(100, 65 + Math.min(result.normalized.length, 20)),
+      parseFailureCount: persisted.parseFailureCount,
+      missingFieldCount: persisted.missingFieldCount,
+      duplicateCount: persisted.duplicateOpportunitiesDeleted + persisted.duplicatePropertiesDeleted,
+      blockedCount: persisted.blockedCount,
+      warningFlags: driftAssessment.warningFlags
+    });
 
     await prisma.sourceSyncLog.createMany({
       data: result.logs.map((log) => ({
@@ -1418,6 +1808,13 @@ async function executeConnectorSync(sourceDefinitionId: string) {
         fetchedCount: result.fetched.length,
         normalizedCount: result.normalized.length,
         dedupedCount: persisted.dedupedCount,
+        newRecordCount: persisted.newRecordCount,
+        updatedRecordCount: persisted.updatedRecordCount,
+        unchangedRecordCount: persisted.unchangedRecordCount,
+        errorRecordCount: persisted.errorRecordCount,
+        blockedCount: persisted.blockedCount,
+        completenessScore: persisted.completenessScore,
+        driftScore: driftAssessment.driftScore,
         finishedAt: new Date(),
         message: `Persisted ${persisted.dedupedCount} normalized record(s) from ${sourceDefinition.name}. Removed ${persisted.duplicateOpportunitiesDeleted} duplicate opportunit${persisted.duplicateOpportunitiesDeleted === 1 ? "y" : "ies"}.`
       }
@@ -1445,9 +1842,15 @@ async function executeConnectorSync(sourceDefinitionId: string) {
       parseFailureCount: persisted.parseFailureCount,
       missingFieldCount: persisted.missingFieldCount,
       duplicateCount: persisted.duplicateOpportunitiesDeleted + persisted.duplicatePropertiesDeleted,
+      blockedCount: persisted.blockedCount,
+      completenessScore: persisted.completenessScore,
+      healthScore,
+      warningFlags: driftAssessment.warningFlags,
       notes:
         result.normalized.length > 0
-          ? `Connector completed successfully for ${sourceDefinition.name}.`
+          ? driftAssessment.warningFlags.length
+            ? `Connector completed with warning flags: ${driftAssessment.warningFlags.join(", ")}.`
+            : `Connector completed successfully for ${sourceDefinition.name}.`
           : `Connector ran, but no normalized records were produced for ${sourceDefinition.name}.`
     });
 
@@ -1470,6 +1873,28 @@ async function executeConnectorSync(sourceDefinitionId: string) {
         sourceId: source.id,
         reviewType: ReviewQueueType.PARSE_FAILURE,
         fingerprint: `${source.id}:low-yield`
+      });
+    }
+
+    if (driftAssessment.warningFlags.length) {
+      await upsertReviewQueueItem(prisma, {
+        organizationId: baseline.organizationId,
+        sourceId: source.id,
+        reviewType: ReviewQueueType.PARSE_FAILURE,
+        title: "Review source drift or degraded output",
+        details: `${sourceDefinition.name} emitted warning flags: ${driftAssessment.warningFlags.join(", ")}`,
+        rationale: "Latest sync completed, but output volume or completeness deviated from the prior healthy run.",
+        sourceUrl: sourceDefinition.sourceUrl,
+        fingerprint: `${source.id}:drift`,
+        confidenceScore: healthScore,
+        priority: 86
+      });
+    } else {
+      await resolveReviewQueueItems(prisma, {
+        organizationId: baseline.organizationId,
+        sourceId: source.id,
+        reviewType: ReviewQueueType.PARSE_FAILURE,
+        fingerprint: `${source.id}:drift`
       });
     }
 
@@ -1524,6 +1949,8 @@ async function executeConnectorSync(sourceDefinitionId: string) {
       runId: run.id,
       status: SourceSyncStatus.failed,
       errorMessage: error instanceof Error ? error.message : "Unknown source sync failure.",
+      healthScore: 0,
+      warningFlags: ["source_failure"],
       notes: `Connector failure for ${sourceDefinition.name}.`
     });
 

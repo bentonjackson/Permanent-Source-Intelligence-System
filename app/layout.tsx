@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
+import Script from "next/script";
 
 import "./globals.css";
 
@@ -23,7 +24,20 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <Script id="theme-init" strategy="beforeInteractive">
+          {`
+            try {
+              var stored = localStorage.getItem('buildsignal-theme');
+              var theme = stored === 'light' || stored === 'dark' ? stored : 'dark';
+              document.documentElement.dataset.theme = theme;
+            } catch (e) {
+              document.documentElement.dataset.theme = 'dark';
+            }
+          `}
+        </Script>
+      </head>
       <body className={`${uiSans.variable} ${displaySerif.variable} font-sans`}>{children}</body>
     </html>
   );

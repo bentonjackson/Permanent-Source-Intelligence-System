@@ -6,11 +6,13 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { useOpportunityActions } from "@/components/opportunities/use-opportunity-actions";
+import { ActionSelect } from "@/components/ui/action-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getOpportunityEntityPresentation } from "@/lib/entities/contact-identity";
 import { COUNTIES_NEAR_ME_LABEL } from "@/lib/geo/territories";
+import { recommendationForOpportunity } from "@/lib/intelligence/lead-intelligence";
 import { formatDate } from "@/lib/utils";
 import { PlotOpportunity } from "@/types/domain";
 
@@ -72,6 +74,11 @@ export function PlotQueue({
   selectedCity,
   selectedJurisdiction,
   selectedTerritory,
+  initialSearch,
+  initialJobFit,
+  initialRecency,
+  initialMinScore,
+  initialHasContactOnly,
   reps
 }: {
   opportunities: PlotOpportunity[];
@@ -83,6 +90,11 @@ export function PlotQueue({
   selectedCity: string;
   selectedJurisdiction: string;
   selectedTerritory: string;
+  initialSearch?: string;
+  initialJobFit?: "all" | PlotOpportunity["jobFit"];
+  initialRecency?: "all" | PlotOpportunity["recencyBucket"];
+  initialMinScore?: "0" | "60" | "80";
+  initialHasContactOnly?: boolean;
   reps: Array<{ id: string; displayName: string; email: string | null }>;
 }) {
   const merged = opportunities;
@@ -91,11 +103,26 @@ export function PlotQueue({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [segmentFilter, setSegmentFilter] = useState<"all" | PlotOpportunity["projectSegment"]>("all");
+  const [jobFitFilter, setJobFitFilter] = useState<"all" | PlotOpportunity["jobFit"]>(initialJobFit ?? "all");
+  const [recencyFilter, setRecencyFilter] = useState<"all" | PlotOpportunity["recencyBucket"]>(initialRecency ?? "all");
+  const [search, setSearch] = useState(initialSearch ?? "");
+  const [hasContactOnly, setHasContactOnly] = useState(initialHasContactOnly ?? false);
+  const [minScore, setMinScore] = useState<"0" | "60" | "80">(initialMinScore ?? "0");
   const [sortBy, setSortBy] = useState<"score" | "newest">("score");
   const [openCounties, setOpenCounties] = useState<Record<string, boolean>>({});
   const [openBuilders, setOpenBuilders] = useState<Record<string, boolean>>({});
   const resolvedSelectedCity =
     cities.find((city) => normalizeCityKey(city) === normalizeCityKey(selectedCity)) ?? selectedCity;
+  const activeFilterCount = [
+    segmentFilter !== "all",
+    jobFitFilter !== "all",
+    recencyFilter !== "all",
+    hasContactOnly,
+    minScore !== "0",
+    sortBy !== "score",
+    selectedJurisdiction !== "All jurisdictions",
+    selectedTerritory !== "All territories"
+  ].filter(Boolean).length;
 
   function updateFilter(key: string, value: string, defaultValue: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -115,19 +142,56 @@ export function PlotQueue({
         ? merged
         : merged.filter((opportunity) => opportunity.projectSegment === segmentFilter);
 
-    const activeOnly = base.filter(
-      (opportunity) =>
-        !["contacted", "won", "lost", "not_a_fit"].includes(opportunity.bidStatus)
-    );
+    const searched = base.filter((opportunity) => {
+      if (jobFitFilter !== "all" && opportunity.jobFit !== jobFitFilter) {
+        return false;
+      }
 
-    return [...activeOnly].sort((left, right) => {
+      if (recencyFilter !== "all" && opportunity.recencyBucket !== recencyFilter) {
+        return false;
+      }
+
+      if (hasContactOnly && !(opportunity.phone || opportunity.email || opportunity.website)) {
+        return false;
+      }
+
+      if (opportunity.opportunityScore < Number(minScore)) {
+        return false;
+      }
+
+      const query = search.trim().toLowerCase();
+
+      if (!query) {
+        return true;
+      }
+
+      const haystack = [
+        opportunity.address,
+        opportunity.parcelNumber,
+        opportunity.lotNumber,
+        opportunity.city,
+        opportunity.county,
+        opportunity.preferredSalesName,
+        opportunity.builderName,
+        opportunity.legalEntityName,
+        opportunity.nextAction,
+        ...opportunity.reasonSummary
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(query);
+    });
+
+    return [...searched.filter((opportunity) => !["contacted", "won", "lost", "not_a_fit"].includes(opportunity.bidStatus))].sort((left, right) => {
       if (sortBy === "newest") {
         return new Date(right.signalDate).getTime() - new Date(left.signalDate).getTime();
       }
 
       return right.opportunityScore - left.opportunityScore;
     });
-  }, [merged, segmentFilter, sortBy]);
+  }, [merged, segmentFilter, jobFitFilter, recencyFilter, hasContactOnly, minScore, search, sortBy]);
 
   const groupedOpportunities = useMemo(() => {
     const countiesMap = new Map<
@@ -196,7 +260,7 @@ export function PlotQueue({
       } else if (openCounties[group.county] !== undefined) {
         nextState[group.county] = openCounties[group.county];
       } else {
-        nextState[group.county] = groupedOpportunities.length <= 3;
+        nextState[group.county] = false;
       }
     }
 
@@ -237,15 +301,26 @@ export function PlotQueue({
     <div className="space-y-4 overflow-x-hidden">
       {error ? (
         <Card className="border-red-500/30 bg-red-500/10">
-          <CardContent className="p-4 text-sm text-red-100">{error}</CardContent>
+          <CardContent className="p-4 text-sm text-[color:var(--brand-red)]">{error}</CardContent>
         </Card>
       ) : null}
       <Card className="overflow-hidden">
-        <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+        <CardContent className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
+          <div className="min-w-0">
+            <p className="eyebrow-label">Search</p>
+            <input
+              className="mt-2 h-10 w-full rounded-md border px-3 text-sm text-[color:var(--title-strong)]"
+              style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Address, contractor, keyword"
+            />
+          </div>
           <div className="min-w-0">
             <p className="eyebrow-label">County</p>
             <select
-              className="mt-2 h-10 w-full rounded-md border border-white/12 bg-white/[0.04] px-3 text-sm text-white"
+              className="mt-2 h-10 w-full rounded-md border px-3 text-sm text-[color:var(--title-strong)]"
+              style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
               value={selectedCounty}
               onChange={(event) => updateFilter("county", event.target.value, COUNTIES_NEAR_ME_LABEL)}
             >
@@ -259,7 +334,8 @@ export function PlotQueue({
           <div className="min-w-0">
             <p className="eyebrow-label">City</p>
             <select
-              className="mt-2 h-10 w-full rounded-md border border-white/12 bg-white/[0.04] px-3 text-sm text-white"
+              className="mt-2 h-10 w-full rounded-md border px-3 text-sm text-[color:var(--title-strong)]"
+              style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
               value={resolvedSelectedCity}
               onChange={(event) => updateFilter("city", event.target.value, "All cities")}
             >
@@ -271,60 +347,133 @@ export function PlotQueue({
             </select>
           </div>
           <div className="min-w-0">
-            <p className="eyebrow-label">Jurisdiction</p>
-            <select
-              className="mt-2 h-10 w-full rounded-md border border-white/12 bg-white/[0.04] px-3 text-sm text-white"
-              value={selectedJurisdiction}
-              onChange={(event) => updateFilter("jurisdiction", event.target.value, "All jurisdictions")}
-            >
-              {jurisdictions.map((jurisdiction) => (
-                <option key={jurisdiction} value={jurisdiction}>
-                  {jurisdiction}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="min-w-0">
-            <p className="eyebrow-label">Territory</p>
-            <select
-              className="mt-2 h-10 w-full rounded-md border border-white/12 bg-white/[0.04] px-3 text-sm text-white"
-              value={selectedTerritory}
-              onChange={(event) => updateFilter("territory", event.target.value, "All territories")}
-            >
-              {territories.map((territory) => (
-                <option key={territory} value={territory}>
-                  {territory}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="min-w-0">
             <p className="eyebrow-label">Project Type</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <FilterButton active={segmentFilter === "all"} onClick={() => setSegmentFilter("all")}>
-                All
-              </FilterButton>
-              <FilterButton active={segmentFilter === "single_family"} onClick={() => setSegmentFilter("single_family")}>
-                Single-Family
-              </FilterButton>
-              <FilterButton active={segmentFilter === "multifamily"} onClick={() => setSegmentFilter("multifamily")}>
-                Multifamily
-              </FilterButton>
-              <FilterButton active={segmentFilter === "commercial"} onClick={() => setSegmentFilter("commercial")}>
-                Commercial
-              </FilterButton>
-            </div>
+            <select
+              className="mt-2 h-10 w-full rounded-md border px-3 text-sm text-[color:var(--title-strong)]"
+              style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+              value={segmentFilter}
+              onChange={(event) => setSegmentFilter(event.target.value as "all" | PlotOpportunity["projectSegment"])}
+            >
+              <option value="all">All project types</option>
+              <option value="single_family">Single-family</option>
+              <option value="multifamily">Multifamily</option>
+              <option value="commercial">Commercial</option>
+            </select>
           </div>
           <div className="min-w-0">
-            <p className="eyebrow-label">Sort By</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <FilterButton active={sortBy === "score"} onClick={() => setSortBy("score")}>
-                Highest Score
-              </FilterButton>
-              <FilterButton active={sortBy === "newest"} onClick={() => setSortBy("newest")}>
-                Newest Signal
-              </FilterButton>
+            <p className="eyebrow-label">Queue focus</p>
+            <div className="mt-2 rounded-[14px] border border-white/10 bg-white/[0.03] px-4 py-3">
+              <p className="text-sm font-medium text-[color:var(--title-strong)]">{filteredOpportunities.length} queue records</p>
+              <p className="mt-1 text-sm text-[color:var(--text-faint)]">
+                {activeFilterCount ? `${activeFilterCount} advanced filters active` : "Showing the full working queue"}
+              </p>
             </div>
+          </div>
+          <div className="min-w-0 md:col-span-2 xl:col-span-4">
+            <details className="rounded-[14px] border border-white/10 bg-white/[0.03] px-4 py-3">
+              <summary className="cursor-pointer list-none text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--text-soft)]">
+                More filters and sorting
+              </summary>
+              <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="min-w-0">
+                  <p className="eyebrow-label">Job Fit</p>
+                  <select
+                    className="mt-2 h-10 w-full rounded-md border px-3 text-sm text-[color:var(--title-strong)]"
+                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                    value={jobFitFilter}
+                    onChange={(event) => setJobFitFilter(event.target.value as "all" | PlotOpportunity["jobFit"])}
+                  >
+                    <option value="all">All fits</option>
+                    <option value="insulation">Insulation</option>
+                    <option value="shelving">Shelving</option>
+                    <option value="both">Both</option>
+                    <option value="low">Low</option>
+                  </select>
+                </div>
+                <div className="min-w-0">
+                  <p className="eyebrow-label">Recency</p>
+                  <select
+                    className="mt-2 h-10 w-full rounded-md border px-3 text-sm text-[color:var(--title-strong)]"
+                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                    value={recencyFilter}
+                    onChange={(event) => setRecencyFilter(event.target.value as "all" | PlotOpportunity["recencyBucket"])}
+                  >
+                    <option value="all">All recency</option>
+                    <option value="0_7_days">0-7 days</option>
+                    <option value="8_30_days">8-30 days</option>
+                    <option value="31_90_days">31-90 days</option>
+                    <option value="older">Older</option>
+                  </select>
+                </div>
+                <div className="min-w-0">
+                  <p className="eyebrow-label">Lead Quality</p>
+                  <select
+                    className="mt-2 h-10 w-full rounded-md border px-3 text-sm text-[color:var(--title-strong)]"
+                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                    value={minScore}
+                    onChange={(event) => setMinScore(event.target.value as "0" | "60" | "80")}
+                  >
+                    <option value="0">All scores</option>
+                    <option value="60">60+</option>
+                    <option value="80">80+</option>
+                  </select>
+                </div>
+                <div className="min-w-0">
+                  <p className="eyebrow-label">Sort By</p>
+                  <select
+                    className="mt-2 h-10 w-full rounded-md border px-3 text-sm text-[color:var(--title-strong)]"
+                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                    value={sortBy}
+                    onChange={(event) => setSortBy(event.target.value as "score" | "newest")}
+                  >
+                    <option value="score">Highest score</option>
+                    <option value="newest">Newest signal</option>
+                  </select>
+                </div>
+                <div className="min-w-0">
+                  <p className="eyebrow-label">Jurisdiction</p>
+                  <select
+                    className="mt-2 h-10 w-full rounded-md border px-3 text-sm text-[color:var(--title-strong)]"
+                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                    value={selectedJurisdiction}
+                    onChange={(event) => updateFilter("jurisdiction", event.target.value, "All jurisdictions")}
+                  >
+                    {jurisdictions.map((jurisdiction) => (
+                      <option key={jurisdiction} value={jurisdiction}>
+                        {jurisdiction}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="min-w-0">
+                  <p className="eyebrow-label">Territory</p>
+                  <select
+                    className="mt-2 h-10 w-full rounded-md border px-3 text-sm text-[color:var(--title-strong)]"
+                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                    value={selectedTerritory}
+                    onChange={(event) => updateFilter("territory", event.target.value, "All territories")}
+                  >
+                    {territories.map((territory) => (
+                      <option key={territory} value={territory}>
+                        {territory}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="min-w-0">
+                  <p className="eyebrow-label">Contact completeness</p>
+                  <select
+                    className="mt-2 h-10 w-full rounded-md border px-3 text-sm text-[color:var(--title-strong)]"
+                    style={{ borderColor: "var(--field-border)", background: "var(--field-bg)" }}
+                    value={hasContactOnly ? "with_contact" : "all"}
+                    onChange={(event) => setHasContactOnly(event.target.value === "with_contact")}
+                  >
+                    <option value="all">All records</option>
+                    <option value="with_contact">Has contact info</option>
+                  </select>
+                </div>
+              </div>
+            </details>
           </div>
         </CardContent>
       </Card>
@@ -337,19 +486,19 @@ export function PlotQueue({
             <Card key={countyGroup.county} className="overflow-hidden">
               <button
                 type="button"
-                className="flex w-full items-center justify-between gap-4 border-b border-white/10 bg-white/[0.02] px-6 py-5 text-left text-white transition-colors duration-200 hover:bg-white/[0.04]"
+                className="flex w-full items-center justify-between gap-4 border-b border-white/10 bg-white/[0.02] px-6 py-5 text-left transition-colors duration-200 hover:bg-white/[0.04]"
                 onClick={() => toggleCounty(countyGroup.county)}
               >
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <MapPinned className="h-4 w-4 text-red-300" />
-                    <span className="font-serif text-[1.35rem] tracking-[-0.04em]">{countyGroup.county} County</span>
+                    <span className="font-serif text-[1.35rem] tracking-[-0.04em] text-[color:var(--title-strong)]">{countyGroup.county} County</span>
                   </div>
-                  <p className="text-sm text-white/52">
+                  <p className="text-sm text-[color:var(--text-faint)]">
                     {countyGroup.builders.length} builder group{countyGroup.builders.length === 1 ? "" : "s"} • {countyOpenParcels} open parcel{countyOpenParcels === 1 ? "" : "s"}
                   </p>
                 </div>
-                <ChevronDown className={`h-5 w-5 text-white/60 transition-transform duration-200 ${isCountyOpen ? "rotate-180" : ""}`} />
+                <ChevronDown className={`h-5 w-5 text-[color:var(--text-faint)] transition-transform duration-200 ${isCountyOpen ? "rotate-180" : ""}`} />
               </button>
               {isCountyOpen ? (
                 <CardContent className="space-y-4 p-4 md:p-6 animate-[panel-in_220ms_ease-out]">
@@ -368,13 +517,13 @@ export function PlotQueue({
                           onClick={() => toggleBuilder(builderGroup.key)}
                         >
                           <div className="min-w-0">
-                            <p className="truncate font-serif text-[1.15rem] tracking-[-0.03em] text-white">
+                            <p className="truncate font-serif text-[1.15rem] tracking-[-0.03em] text-[color:var(--title-strong)]">
                               {builderGroup.name}
                               {previewEntity ? (
-                                <span className="ml-2 font-sans text-sm font-normal text-white/42">{previewEntity}</span>
+                                <span className="ml-2 font-sans text-sm font-normal text-[color:var(--text-faint)]">{previewEntity}</span>
                               ) : null}
                             </p>
-                            <p className="mt-2 text-sm text-white/52">
+                            <p className="mt-2 text-sm text-[color:var(--text-faint)]">
                               {builderGroup.items.length} active propert{builderGroup.items.length === 1 ? "y" : "ies"} • best score {topScore}
                             </p>
                           </div>
@@ -382,7 +531,7 @@ export function PlotQueue({
                             <Badge tone={builderGroup.items.some((item) => item.preferredSalesName) ? "slate" : "amber"}>
                               {builderGroup.items.some((item) => item.preferredSalesName) ? "Sales-ready identity" : "Research contact"}
                             </Badge>
-                            <ChevronDown className={`h-5 w-5 text-white/60 transition-transform duration-200 ${isBuilderOpen ? "rotate-180" : ""}`} />
+                            <ChevronDown className={`h-5 w-5 text-[color:var(--text-faint)] transition-transform duration-200 ${isBuilderOpen ? "rotate-180" : ""}`} />
                           </div>
                         </button>
                         {isBuilderOpen ? (
@@ -391,26 +540,33 @@ export function PlotQueue({
                               const entity = getOpportunityEntityPresentation(opportunity);
 
                               return (
-                                <div key={opportunity.id} className="rounded-[16px] border border-white/10 bg-[#171a1f] p-4 transition-all duration-200 hover:-translate-y-[1px] hover:border-white/14 hover:bg-[#1a1d22] hover:shadow-panel">
+                                <div
+                                  key={opportunity.id}
+                                  className="rounded-[16px] border border-white/10 p-4 transition-all duration-200 hover:-translate-y-[1px] hover:border-white/14 hover:shadow-panel"
+                                  style={{ background: "linear-gradient(180deg, var(--panel-bg-top), var(--panel-bg-bottom))" }}
+                                >
                                   <div className="flex min-w-0 flex-col gap-4 border-b border-white/8 pb-4 lg:flex-row lg:items-start lg:justify-between">
                                     <div className="min-w-0">
-                                      <p className="font-serif text-[1.22rem] tracking-[-0.03em] text-white">
+                                      <p className="font-serif text-[1.22rem] tracking-[-0.03em] text-[color:var(--title-strong)]">
                                         {entity.displayName}
                                       </p>
-                                      <p className="mt-2 text-base font-medium text-white/84">
+                                      <p className="mt-2 text-base font-medium text-[color:var(--title-strong)]">
                                         {opportunity.address || opportunity.parcelNumber || "Unmapped lot"}
                                       </p>
-                                      <p className="mt-1 text-sm text-white/52">
+                                      <p className="mt-1 text-sm text-[color:var(--text-faint)]">
                                         {opportunity.city}, {opportunity.county}
                                         {opportunity.subdivision ? ` • ${opportunity.subdivision}` : ""}
                                         {opportunity.lotNumber ? ` • ${opportunity.lotNumber}` : ""}
                                       </p>
                                       {entity.relatedEntityName ? (
-                                        <p className="mt-2 text-sm text-white/38">Landowner / related entity: {entity.relatedEntityName}</p>
+                                        <p className="mt-2 text-sm text-[color:var(--text-faint)]">Landowner / related entity: {entity.relatedEntityName}</p>
                                       ) : null}
                                     </div>
                                     <div className="flex flex-wrap gap-2">
                                       <Badge tone="red">Score {opportunity.opportunityScore}</Badge>
+                                      <Badge tone={opportunity.jobFit === "both" ? "green" : opportunity.jobFit === "shelving" ? "amber" : "slate"}>
+                                        {opportunity.jobFit}
+                                      </Badge>
                                       <Badge tone={opportunity.projectSegment === "commercial" ? "red" : opportunity.projectSegment === "multifamily" ? "amber" : "slate"}>
                                         {opportunity.projectSegment.replace("_", "-")}
                                       </Badge>
@@ -418,14 +574,23 @@ export function PlotQueue({
                                       <Badge tone={bidStatusTone[opportunity.bidStatus]}>
                                         {opportunity.bidStatus.replaceAll("_", " ")}
                                       </Badge>
+                                      {opportunity.requiresReview ? <Badge tone="amber">Review required</Badge> : null}
+                                      {opportunity.duplicateRiskScore >= 40 ? <Badge tone="red">Duplicate risk</Badge> : null}
+                                      {opportunity.sourceRecordVersion > 1 ? <Badge tone="blue">Updated record</Badge> : null}
+                                      {!opportunity.phone && !opportunity.email ? <Badge tone="amber">Missing contact</Badge> : null}
                                     </div>
                                   </div>
                                   <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                                     <Info label="Parcel / Lot" value={[opportunity.parcelNumber, opportunity.lotNumber].filter(Boolean).join(" • ") || "N/A"} />
                                     <Info label="Value" value={formatCurrency(opportunity.estimatedProjectValue ?? opportunity.improvementValue ?? opportunity.landValue)} />
                                     <Info label="Signal" value={opportunity.opportunityType.replaceAll("_", " ")} />
+                                    <Info label="Lead Type" value={opportunity.leadType.replaceAll("_", " ")} />
                                     <Info label="Contact Tier" value={formatQualityTier(opportunity.contactQualityTier)} />
                                     <Info label="Entity Confidence" value={`${opportunity.entityConfidenceScore}`} />
+                                    <Info label="Record version" value={`${opportunity.sourceRecordVersion}`} />
+                                    <Info label="Last source change" value={formatDate(opportunity.lastSourceChangedAt)} />
+                                    <Info label="Review status" value={opportunity.requiresReview ? "Needs manual review" : "Healthy"} />
+                                    <Info label="Duplicate risk" value={`${opportunity.duplicateRiskScore}`} />
                                   </div>
                                   <div className="mt-4 grid gap-4 2xl:grid-cols-[minmax(0,1fr)_300px]">
                                     <div className="space-y-4">
@@ -442,6 +607,10 @@ export function PlotQueue({
                                           <Info label="Direct phone" value={opportunity.phone ?? "Needs research"} />
                                           <Info label="Direct email" value={opportunity.email ?? "Needs research"} />
                                           <Info label="Company website" value={opportunity.website ?? "Needs research"} />
+                                          <Info label="Recency" value={opportunity.recencyBucket.replaceAll("_", " ")} />
+                                          <Info label="Opportunity reason" value={opportunity.opportunityReason.replaceAll("_", " ")} />
+                                          <Info label="Project stage" value={opportunity.projectStageStatus.replaceAll("_", " ")} />
+                                          <Info label="Market cluster" value={opportunity.marketCluster ?? "Unclustered"} />
                                           <Info label="Contractor reg." value={[opportunity.contractorRegistrationNumber, opportunity.contractorRegistrationStatus.replaceAll("_", " ")].filter(Boolean).join(" • ") || "Unknown"} />
                                         </div>
                                         <div className="mt-4 flex flex-wrap gap-4 text-sm">
@@ -467,7 +636,7 @@ export function PlotQueue({
                                           ) : null}
                                         </div>
                                         {opportunity.aliases.length ? (
-                                          <p className="mt-3 text-sm text-white/44">Aliases: {opportunity.aliases.join(", ")}</p>
+                                          <p className="mt-3 text-sm text-[color:var(--text-faint)]">Aliases: {opportunity.aliases.join(", ")}</p>
                                         ) : null}
                                       </div>
                                       <div className="rounded-[14px] border border-white/10 bg-white/[0.03] p-4">
@@ -479,10 +648,28 @@ export function PlotQueue({
                                             </Badge>
                                           ))}
                                         </div>
-                                        <p className="mt-4 text-sm text-white/78">{opportunity.nextAction}</p>
-                                        <p className="mt-3 text-xs uppercase tracking-[0.18em] text-white/36">
+                                        {opportunity.scoreBreakdown.length ? (
+                                          <div className="mt-4 flex flex-wrap gap-2">
+                                            {opportunity.scoreBreakdown
+                                              .filter((item) => item.value !== 0)
+                                              .slice(0, 6)
+                                              .map((item) => (
+                                                <Badge key={`${opportunity.id}-${item.label}`} tone={item.value > 0 ? "green" : "amber"}>
+                                                  {item.label.replaceAll("_", " ")} {item.value > 0 ? `+${item.value}` : item.value}
+                                                </Badge>
+                                              ))}
+                                          </div>
+                                        ) : null}
+                                        <p className="mt-4 text-sm text-[color:var(--text-soft)]">{recommendationForOpportunity(opportunity)}</p>
+                                        <p className="mt-2 text-sm text-[color:var(--text-soft)]">{opportunity.nextAction}</p>
+                                        <p className="mt-3 text-xs uppercase tracking-[0.18em] text-[color:var(--text-faint)]">
                                           {opportunity.sourceJurisdiction} • {opportunity.sourceName} • {formatDate(opportunity.signalDate)}
                                         </p>
+                                        {opportunity.sourceChangeSummary.length ? (
+                                          <p className="mt-2 text-xs text-[color:var(--text-faint)]">
+                                            Recent source changes: {opportunity.sourceChangeSummary.join(", ")}
+                                          </p>
+                                        ) : null}
                                       </div>
                                     </div>
                                     <div className="rounded-[14px] border border-white/10 bg-white/[0.03] p-4">
@@ -504,19 +691,29 @@ export function PlotQueue({
                                       </label>
                                       <div className="mt-4 flex flex-wrap gap-2">
                                         <Button
+                                          className="border-red-300/62 bg-red-500/22 text-white shadow-[0_14px_28px_-20px_rgba(196,59,53,0.95)] hover:border-red-200/80 hover:bg-red-500/30 hover:text-white"
                                           disabled={pendingKey === `move:${opportunity.id}`}
                                           onClick={() => void moveToContacted(opportunity.id, opportunity.assignedMembershipId ?? undefined)}
                                         >
                                           Move to Contacted
                                         </Button>
-                                        <Button
-                                          variant="outline"
-                                          className="border-red-500/32 text-red-100 hover:bg-red-500/12"
-                                          disabled={pendingKey === `not-fit:${opportunity.id}`}
-                                          onClick={() => void markNotFit(opportunity.id)}
-                                        >
-                                          Mark Not a Fit
-                                        </Button>
+                                        <ActionSelect
+                                          placeholder="More actions"
+                                          onSelect={async (value) => {
+                                            if (value === "not-fit") {
+                                              await markNotFit(opportunity.id);
+                                              return;
+                                            }
+
+                                            if (value === "open-detail") {
+                                              router.push(`/opportunities/${opportunity.id}`);
+                                            }
+                                          }}
+                                          options={[
+                                            { label: "Open full record", value: "open-detail" },
+                                            { label: "Mark not a fit", value: "not-fit", disabled: pendingKey === `not-fit:${opportunity.id}` }
+                                          ]}
+                                        />
                                       </div>
                                       <Link href={`/opportunities/${opportunity.id}`} className="text-link mt-5 inline-flex">
                                         Open opportunity detail
@@ -538,28 +735,12 @@ export function PlotQueue({
         })
       ) : (
         <Card>
-          <CardContent className="p-6 text-sm text-white/58">
+          <CardContent className="p-6 text-sm text-[color:var(--text-faint)]">
             No database-backed opportunities matched the current county and project filters.
           </CardContent>
         </Card>
       )}
     </div>
-  );
-}
-
-function FilterButton({
-  active,
-  children,
-  onClick
-}: {
-  active: boolean;
-  children: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <Button variant={active ? "default" : "outline"} className="h-9" onClick={onClick}>
-      {children}
-    </Button>
   );
 }
 

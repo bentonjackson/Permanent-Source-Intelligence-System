@@ -6,7 +6,7 @@ export function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElemen
   return (
     <div
       className={cn(
-        "surface-panel panel-grid relative overflow-hidden rounded-[18px] transition-[transform,box-shadow,border-color,background-color] duration-300 hover:border-white/14 hover:shadow-panel-strong",
+        "surface-panel panel-grid relative overflow-hidden rounded-[18px] transition-[transform,box-shadow,border-color,background-color] duration-300 hover:border-red-300/38 hover:shadow-panel-strong",
         className
       )}
       {...props}
@@ -23,7 +23,7 @@ export function CardTitle({ className, ...props }: React.HTMLAttributes<HTMLHead
 }
 
 export function CardDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
-  return <p className={cn("text-sm text-white/60", className)} {...props} />;
+  return <p className={cn("text-sm text-white/74", className)} {...props} />;
 }
 
 export function CardContent({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {

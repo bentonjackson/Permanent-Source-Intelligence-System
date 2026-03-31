@@ -28,6 +28,10 @@ The application is centered on Cedar Rapids and seeded for the corridor counties
 - Tracks outreach, follow-up, won/lost outcomes, and notes
 - Supports manual CSV/XLSX import through the same deduplicated pipeline
 - Stores reviewable source-health and weak-identity diagnostics instead of silently dropping low-confidence records
+- Uses stable identity keys for permits, properties, builders, and opportunities so repeated syncs update records in place
+- Blocks malformed normalized records before they become active opportunities and routes them to review instead
+- Tracks source-change versions, fingerprints, and change summaries for permits and opportunities
+- Scores source health with completeness, blocked-record, duplicate, and drift-aware warning signals
 
 ## Current Live Connectors
 
@@ -196,7 +200,10 @@ npm run worker:enrich
 - Activity rows store calls, emails, notes, follow-ups, and status changes with timestamps so follow-up history survives refreshes, redeploys, and repeat syncs.
 - Source sync preserves manual sales data. Re-ingestion can refresh source-derived fields, but it does not wipe rep assignment, contact records, notes, or activity history.
 - Sync runs now write health checks and open review items for parse failures, weak identities, missing fields, ambiguous matches, and missing contact channels.
+- Sync runs now also store per-run change counts (`new`, `updated`, `unchanged`, `error`), blocked-record counts, completeness scores, and drift scores.
 - Connector runs retry once on transient failure and preserve prior good data if a source degrades.
+- Source drift detection warns when normalized output drops sharply, completeness collapses, or parse error rates spike compared to the previous healthy run.
+- Opportunities and contacts now store normalized identity/contact fields plus duplicate-risk and review-required signals for safer long-term re-sync behavior.
 - Local auth middleware is currently in demo-pass-through mode so the app can run without Clerk keys. The project remains Clerk-ready.
 
 ## Verification In This Workspace

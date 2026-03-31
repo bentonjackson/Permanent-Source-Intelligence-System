@@ -6,16 +6,15 @@ import {
   CalendarClock,
   ChevronDown,
   ChevronUp,
-  Copy,
   Mail,
   Phone,
   Plus,
-  Save,
-  Trash2
+  Save
 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useOpportunityActions } from "@/components/opportunities/use-opportunity-actions";
+import { ActionSelect } from "@/components/ui/action-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +26,6 @@ import {
   ActivityType,
   OpportunityContact,
   OpportunityInterestStatus,
-  PipelineStage,
   PlotOpportunity,
   PreferredContactMethod
 } from "@/types/domain";
@@ -86,10 +84,6 @@ function isoLocalDateTime(value: string | null | undefined) {
 
 function nextFollowUpLabel(opportunity: PlotOpportunity) {
   return opportunity.nextFollowUpAt ?? opportunity.nextFollowUpDate ?? opportunity.suggestedFollowUpDate ?? null;
-}
-
-function formatStage(value: PipelineStage) {
-  return value;
 }
 
 function formatInterest(value: OpportunityInterestStatus) {
@@ -400,7 +394,7 @@ export function ContactedLeadsBoard({
               </CardHeader>
               {expanded ? (
                 <CardContent className="space-y-5 animate-[panel-in_220ms_ease-out]">
-                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <Summary label="Primary contact" value={primaryContact?.fullName ?? "No contact yet"} />
                     <Summary
                       label="Best phone"
@@ -408,81 +402,64 @@ export function ContactedLeadsBoard({
                     />
                     <Summary label="Best email" value={primaryContact?.email ?? opportunity.email ?? "Needs research"} />
                     <Summary label="Last contact" value={formatDate(opportunity.lastContactedAt ?? opportunity.contactedAt)} />
-                    <Summary label="Assigned rep" value={opportunity.assignedRep} />
+                    <Summary label="Next follow-up" value={formatDate(nextFollowUpLabel(opportunity))} />
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
-                      variant="outline"
                       className="h-8"
                       disabled={pendingKey === `activity:${opportunity.id}`}
                       onClick={() => void handleQuickActivity(opportunity, "called")}
                     >
                       Log Call
                     </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-8"
-                      disabled={pendingKey === `activity:${opportunity.id}`}
-                      onClick={() => void handleQuickActivity(opportunity, "sent_email")}
-                    >
-                      Log Email
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-8"
-                      disabled={pendingKey === `workflow:${opportunity.id}`}
-                      onClick={() => void handleQuickFollowUp(opportunity)}
-                    >
-                      Schedule Follow-Up
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-8"
-                      disabled={pendingKey === `workflow:${opportunity.id}`}
-                      onClick={() =>
-                        void updateWorkflow(opportunity.id, {
-                          interestStatus: "interested",
-                          contactStatus: "Interested"
-                        })
-                      }
-                    >
-                      Mark Interested
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-8"
-                      disabled={pendingKey === `workflow:${opportunity.id}`}
-                      onClick={() =>
-                        void updateWorkflow(opportunity.id, {
-                          interestStatus: "not_interested",
-                          contactStatus: "Not interested"
-                        })
-                      }
-                    >
-                      Not Interested
-                    </Button>
-                    <Button
-                      type="button"
-                      className="h-8"
-                      disabled={pendingKey === `workflow:${opportunity.id}`}
-                      onClick={() => void handleOutcome(opportunity, "won")}
-                    >
-                      Move to Won
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-8 border-red-500/32 text-red-100 hover:bg-red-500/12"
-                      disabled={pendingKey === `workflow:${opportunity.id}`}
-                      onClick={() => void handleOutcome(opportunity, "lost")}
-                    >
-                      Move to Lost
-                    </Button>
+                    <ActionSelect
+                      placeholder="Quick actions"
+                      onSelect={async (value) => {
+                        if (value === "email") {
+                          await handleQuickActivity(opportunity, "sent_email");
+                          return;
+                        }
+
+                        if (value === "follow-up") {
+                          await handleQuickFollowUp(opportunity);
+                          return;
+                        }
+
+                        if (value === "interested") {
+                          await updateWorkflow(opportunity.id, {
+                            interestStatus: "interested",
+                            contactStatus: "Interested"
+                          });
+                          return;
+                        }
+
+                        if (value === "not-interested") {
+                          await updateWorkflow(opportunity.id, {
+                            interestStatus: "not_interested",
+                            contactStatus: "Not interested"
+                          });
+                          return;
+                        }
+
+                        if (value === "won") {
+                          await handleOutcome(opportunity, "won");
+                          return;
+                        }
+
+                        if (value === "lost") {
+                          await handleOutcome(opportunity, "lost");
+                        }
+                      }}
+                      options={[
+                        { label: "Log email", value: "email", disabled: pendingKey === `activity:${opportunity.id}` },
+                        { label: "Schedule follow-up", value: "follow-up", disabled: pendingKey === `workflow:${opportunity.id}` },
+                        { label: "Mark interested", value: "interested", disabled: pendingKey === `workflow:${opportunity.id}` },
+                        { label: "Mark not interested", value: "not-interested", disabled: pendingKey === `workflow:${opportunity.id}` },
+                        { label: "Move to won", value: "won", disabled: pendingKey === `workflow:${opportunity.id}` },
+                        { label: "Move to lost", value: "lost", disabled: pendingKey === `workflow:${opportunity.id}` }
+                      ]}
+                    />
                   </div>
                   <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
                     <CardSection title="Lead Summary">
@@ -638,53 +615,45 @@ export function ContactedLeadsBoard({
                                   </p>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
-                                  {contact.phone ? (
-                                    <Button type="button" variant="outline" className="h-8 px-3" onClick={() => quickCopy(contact.phone)}>
-                                      <Copy className="mr-2 h-3.5 w-3.5" />
-                                      Copy Phone
-                                    </Button>
-                                  ) : null}
-                                  {contact.email ? (
-                                    <Button type="button" variant="outline" className="h-8 px-3" onClick={() => quickCopy(contact.email)}>
-                                      <Copy className="mr-2 h-3.5 w-3.5" />
-                                      Copy Email
-                                    </Button>
-                                  ) : null}
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="h-8 px-3"
-                                    onClick={() =>
-                                      setContactEditor({
-                                        opportunityId: opportunity.id,
-                                        contactId: contact.id,
-                                        values: buildContactDraft(opportunity, contact)
-                                      })
-                                    }
-                                  >
-                                    Edit
-                                  </Button>
-                                  {!contact.isPrimary ? (
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      className="h-8 px-3"
-                                      disabled={pendingKey === `contact:update:${contact.id}`}
-                                      onClick={() => void updateContact(contact.id, { isPrimary: true })}
-                                    >
-                                      Mark Primary
-                                    </Button>
-                                  ) : null}
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      className="h-8 border-red-500/32 px-3 text-red-100 hover:bg-red-500/12"
-                                    disabled={pendingKey === `contact:delete:${contact.id}`}
-                                    onClick={() => void deleteContact(contact.id)}
-                                  >
-                                    <Trash2 className="mr-2 h-3.5 w-3.5" />
-                                    Delete
-                                  </Button>
+                                  <ActionSelect
+                                    placeholder="Contact actions"
+                                    onSelect={async (value) => {
+                                      if (value === "copy-phone" && contact.phone) {
+                                        quickCopy(contact.phone);
+                                        return;
+                                      }
+
+                                      if (value === "copy-email" && contact.email) {
+                                        quickCopy(contact.email);
+                                        return;
+                                      }
+
+                                      if (value === "edit") {
+                                        setContactEditor({
+                                          opportunityId: opportunity.id,
+                                          contactId: contact.id,
+                                          values: buildContactDraft(opportunity, contact)
+                                        });
+                                        return;
+                                      }
+
+                                      if (value === "primary") {
+                                        await updateContact(contact.id, { isPrimary: true });
+                                        return;
+                                      }
+
+                                      if (value === "delete") {
+                                        await deleteContact(contact.id);
+                                      }
+                                    }}
+                                    options={[
+                                      { label: "Copy phone", value: "copy-phone", disabled: !contact.phone },
+                                      { label: "Copy email", value: "copy-email", disabled: !contact.email },
+                                      { label: "Edit contact", value: "edit" },
+                                      { label: "Mark primary", value: "primary", disabled: contact.isPrimary || pendingKey === `contact:update:${contact.id}` },
+                                      { label: "Delete contact", value: "delete", disabled: pendingKey === `contact:delete:${contact.id}` }
+                                    ]}
+                                  />
                                 </div>
                               </div>
                               <div className="mt-3 flex flex-wrap gap-3 text-sm text-white/72">
@@ -986,164 +955,169 @@ export function ContactedLeadsBoard({
                     </CardSection>
 
                     <CardSection title="Activity & Follow-Up">
-                      <form
-                        className="rounded-[14px] border border-white/10 bg-white/[0.03] p-4"
-                        onSubmit={async (event) => {
-                          event.preventDefault();
-                          await logActivity(opportunity.id, {
-                            activityType: activityDraft.activityType,
-                            activityDirection: activityDraft.activityDirection,
-                            occurredAt: localInputToIso(activityDraft.occurredAt),
-                            contactId: activityDraft.contactId || null,
-                            outcome: activityDraft.outcome || null,
-                            note: activityDraft.note || null,
-                            nextFollowUpAt: localInputToIso(activityDraft.nextFollowUpAt)
-                          });
-                        }}
-                      >
-                        <div className="grid gap-4 md:grid-cols-2">
-                          <Field label="Activity type">
-                            <select
-                              value={activityDraft.activityType}
-                              onChange={(event) =>
-                                setActivityDrafts((current) => ({
-                                  ...current,
-                                  [opportunity.id]: {
-                                    ...activityDraft,
-                                    activityType: event.target.value as ActivityType
-                                  }
-                                }))
-                              }
-                            >
-                              {[
-                                "called",
-                                "left_voicemail",
-                                "sent_email",
-                                "received_email",
-                                "texted",
-                                "met",
-                                "quote_discussed",
-                                "follow_up_scheduled",
-                                "note_added",
-                                "status_changed"
-                              ].map((type) => (
-                                <option key={type} value={type}>
-                                  {type.replaceAll("_", " ")}
-                                </option>
-                              ))}
-                            </select>
-                          </Field>
-                          <Field label="Direction">
-                            <select
-                              value={activityDraft.activityDirection}
-                              onChange={(event) =>
-                                setActivityDrafts((current) => ({
-                                  ...current,
-                                  [opportunity.id]: {
-                                    ...activityDraft,
-                                    activityDirection: event.target.value as ActivityDirection
-                                  }
-                                }))
-                              }
-                            >
-                              {["outbound", "inbound", "internal"].map((direction) => (
-                                <option key={direction} value={direction}>
-                                  {direction}
-                                </option>
-                              ))}
-                            </select>
-                          </Field>
-                          <Field label="Occurred at">
-                            <input
-                              type="datetime-local"
-                              value={activityDraft.occurredAt}
-                              onChange={(event) =>
-                                setActivityDrafts((current) => ({
-                                  ...current,
-                                  [opportunity.id]: {
-                                    ...activityDraft,
-                                    occurredAt: event.target.value
-                                  }
-                                }))
-                              }
-                            />
-                          </Field>
-                          <Field label="Related contact">
-                            <select
-                              value={activityDraft.contactId}
-                              onChange={(event) =>
-                                setActivityDrafts((current) => ({
-                                  ...current,
-                                  [opportunity.id]: {
-                                    ...activityDraft,
-                                    contactId: event.target.value
-                                  }
-                                }))
-                              }
-                            >
-                              <option value="">No linked contact</option>
-                              {opportunity.contacts.map((contact) => (
-                                <option key={contact.id} value={contact.id}>
-                                  {contact.fullName ?? "Unnamed contact"}
-                                </option>
-                              ))}
-                            </select>
-                          </Field>
-                          <Field label="Outcome">
-                            <input
-                              value={activityDraft.outcome}
-                              onChange={(event) =>
-                                setActivityDrafts((current) => ({
-                                  ...current,
-                                  [opportunity.id]: {
-                                    ...activityDraft,
-                                    outcome: event.target.value
-                                  }
-                                }))
-                              }
-                            />
-                          </Field>
-                          <Field label="Next follow-up">
-                            <input
-                              type="datetime-local"
-                              value={activityDraft.nextFollowUpAt}
-                              onChange={(event) =>
-                                setActivityDrafts((current) => ({
-                                  ...current,
-                                  [opportunity.id]: {
-                                    ...activityDraft,
-                                    nextFollowUpAt: event.target.value
-                                  }
-                                }))
-                              }
-                            />
-                          </Field>
-                        </div>
-                        <Field className="mt-4" label="Note">
-                          <textarea
-                            className="min-h-[90px]"
-                            value={activityDraft.note}
-                            onChange={(event) =>
-                              setActivityDrafts((current) => ({
-                                ...current,
-                                [opportunity.id]: {
-                                  ...activityDraft,
-                                  note: event.target.value
+                      <details className="rounded-[14px] border border-white/10 bg-white/[0.03] p-4">
+                        <summary className="cursor-pointer list-none text-sm font-semibold uppercase tracking-[0.18em] text-white/72">
+                          Log outreach
+                        </summary>
+                        <form
+                          className="mt-4"
+                          onSubmit={async (event) => {
+                            event.preventDefault();
+                            await logActivity(opportunity.id, {
+                              activityType: activityDraft.activityType,
+                              activityDirection: activityDraft.activityDirection,
+                              occurredAt: localInputToIso(activityDraft.occurredAt),
+                              contactId: activityDraft.contactId || null,
+                              outcome: activityDraft.outcome || null,
+                              note: activityDraft.note || null,
+                              nextFollowUpAt: localInputToIso(activityDraft.nextFollowUpAt)
+                            });
+                          }}
+                        >
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <Field label="Activity type">
+                              <select
+                                value={activityDraft.activityType}
+                                onChange={(event) =>
+                                  setActivityDrafts((current) => ({
+                                    ...current,
+                                    [opportunity.id]: {
+                                      ...activityDraft,
+                                      activityType: event.target.value as ActivityType
+                                    }
+                                  }))
                                 }
-                              }))
-                            }
-                          />
-                        </Field>
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          <Button
-                            type="submit"
-                            disabled={pendingKey === `activity:${opportunity.id}`}
-                          >
-                            <CalendarClock className="mr-2 h-4 w-4" />
-                            Log Outreach
-                          </Button>
-                        </div>
-                      </form>
+                              >
+                                {[
+                                  "called",
+                                  "left_voicemail",
+                                  "sent_email",
+                                  "received_email",
+                                  "texted",
+                                  "met",
+                                  "quote_discussed",
+                                  "follow_up_scheduled",
+                                  "note_added",
+                                  "status_changed"
+                                ].map((type) => (
+                                  <option key={type} value={type}>
+                                    {type.replaceAll("_", " ")}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+                            <Field label="Direction">
+                              <select
+                                value={activityDraft.activityDirection}
+                                onChange={(event) =>
+                                  setActivityDrafts((current) => ({
+                                    ...current,
+                                    [opportunity.id]: {
+                                      ...activityDraft,
+                                      activityDirection: event.target.value as ActivityDirection
+                                    }
+                                  }))
+                                }
+                              >
+                                {["outbound", "inbound", "internal"].map((direction) => (
+                                  <option key={direction} value={direction}>
+                                    {direction}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+                            <Field label="Occurred at">
+                              <input
+                                type="datetime-local"
+                                value={activityDraft.occurredAt}
+                                onChange={(event) =>
+                                  setActivityDrafts((current) => ({
+                                    ...current,
+                                    [opportunity.id]: {
+                                      ...activityDraft,
+                                      occurredAt: event.target.value
+                                    }
+                                  }))
+                                }
+                              />
+                            </Field>
+                            <Field label="Related contact">
+                              <select
+                                value={activityDraft.contactId}
+                                onChange={(event) =>
+                                  setActivityDrafts((current) => ({
+                                    ...current,
+                                    [opportunity.id]: {
+                                      ...activityDraft,
+                                      contactId: event.target.value
+                                    }
+                                  }))
+                                }
+                              >
+                                <option value="">No linked contact</option>
+                                {opportunity.contacts.map((contact) => (
+                                  <option key={contact.id} value={contact.id}>
+                                    {contact.fullName ?? "Unnamed contact"}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+                            <Field label="Outcome">
+                              <input
+                                value={activityDraft.outcome}
+                                onChange={(event) =>
+                                  setActivityDrafts((current) => ({
+                                    ...current,
+                                    [opportunity.id]: {
+                                      ...activityDraft,
+                                      outcome: event.target.value
+                                    }
+                                  }))
+                                }
+                              />
+                            </Field>
+                            <Field label="Next follow-up">
+                              <input
+                                type="datetime-local"
+                                value={activityDraft.nextFollowUpAt}
+                                onChange={(event) =>
+                                  setActivityDrafts((current) => ({
+                                    ...current,
+                                    [opportunity.id]: {
+                                      ...activityDraft,
+                                      nextFollowUpAt: event.target.value
+                                    }
+                                  }))
+                                }
+                              />
+                            </Field>
+                          </div>
+                          <Field className="mt-4" label="Note">
+                            <textarea
+                              className="min-h-[90px]"
+                              value={activityDraft.note}
+                              onChange={(event) =>
+                                setActivityDrafts((current) => ({
+                                  ...current,
+                                  [opportunity.id]: {
+                                    ...activityDraft,
+                                    note: event.target.value
+                                  }
+                                }))
+                              }
+                            />
+                          </Field>
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <Button
+                              type="submit"
+                              disabled={pendingKey === `activity:${opportunity.id}`}
+                            >
+                              <CalendarClock className="mr-2 h-4 w-4" />
+                              Save outreach log
+                            </Button>
+                          </div>
+                        </form>
+                      </details>
                       <div className="mt-4 space-y-3">
                         {opportunity.activities.length ? (
                           opportunity.activities.map((activity) => (

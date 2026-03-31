@@ -4,7 +4,16 @@ import { DEFAULT_OPEN_TERRITORY_LABEL, DEFAULT_ORGANIZATION_SLUG } from "@/lib/a
 import { persistenceRowToOpportunity } from "@/lib/opportunities/persistence";
 import { prisma } from "@/lib/db/client";
 import { COUNTIES_NEAR_ME_LABEL } from "@/lib/geo/territories";
-import { calculateLeadScore } from "@/lib/scoring/lead-scoring";
+import { buildContractorMetrics, hydrateOpportunityIntelligence } from "@/lib/intelligence/lead-intelligence";
+import { calculateLeadScore, calculateOpportunityScore } from "@/lib/scoring/lead-scoring";
+import { computeSourceHealthScore } from "@/lib/connectors/shared/validation";
+import {
+  computeLiveDataConfidence,
+  evaluateSourceFreshness,
+  inferSourceDataOrigin,
+  summarizeRawRecordChanges,
+  summarizeTransformationConsistency
+} from "@/lib/validation/live-data-validation";
 import {
   BuilderRecord,
   DashboardSnapshot,
@@ -22,6 +31,12 @@ export interface OpportunityQuery {
   city?: string | null;
   jurisdiction?: string | null;
   territory?: string | null;
+  search?: string | null;
+  jobFit?: PlotOpportunity["jobFit"] | "all" | null;
+  recency?: PlotOpportunity["recencyBucket"] | "all" | null;
+  minScore?: number | null;
+  hasContactInfo?: boolean | null;
+  notYetContacted?: boolean | null;
   projectSegment?: "all" | PlotOpportunity["projectSegment"];
   status?: OpportunityStatusFilter;
   sort?: OpportunitySort;
@@ -118,12 +133,24 @@ function toNumber(value: Prisma.Decimal | number | null | undefined) {
 function buildPermitFromOpportunity(opportunity: PlotOpportunity): PermitRecord {
   return {
     id: `${opportunity.id}-permit`,
+    permitIdentityKey: opportunity.permitIdentityKey,
+    sourceFingerprint: opportunity.sourceFingerprint,
+    sourceRecordVersion: opportunity.sourceRecordVersion,
+    lastSourceChangedAt: opportunity.lastSourceChangedAt,
+    sourceChangeSummary: opportunity.sourceChangeSummary,
     permitNumber: opportunity.permitNumber ?? opportunity.id,
     permitType: opportunity.opportunityType.replaceAll("_", " "),
     permitSubtype: opportunity.classification.replaceAll("_", " "),
     permitStatus: opportunity.buildReadiness.replaceAll("_", " "),
     applicationDate: opportunity.signalDate,
     issueDate: opportunity.signalDate,
+    city: opportunity.city || null,
+    state: opportunity.addressState,
+    zip: opportunity.addressZip,
+    contractorName: opportunity.builderName ?? opportunity.preferredSalesName ?? null,
+    companyName: opportunity.legalEntityName ?? opportunity.likelyCompanyName ?? null,
+    permitDescription: opportunity.reasonSummary.join(" • ") || null,
+    projectValue: opportunity.estimatedProjectValue ?? opportunity.improvementValue ?? opportunity.landValue,
     estimatedProjectValue: opportunity.estimatedProjectValue,
     landValue: opportunity.landValue,
     improvementValue: opportunity.improvementValue,
@@ -143,8 +170,24 @@ function mapDbOpportunity(row: OpportunityRow): PlotOpportunity {
     row.source?.county ??
     "";
 
-  return {
+  const hydrated = hydrateOpportunityIntelligence({
     ...base,
+    opportunityIdentityKey: row.opportunityIdentityKey ?? base.opportunityIdentityKey,
+    propertyIdentityKey: base.propertyIdentityKey ?? row.property?.propertyIdentityKey ?? null,
+    permitIdentityKey: base.permitIdentityKey ?? row.permit?.permitIdentityKey ?? null,
+    builderIdentityKey:
+      base.builderIdentityKey ?? row.builder?.builderIdentityKey ?? row.normalizedEntityName ?? null,
+    sourceFingerprint: row.sourceFingerprint ?? row.permit?.sourceFingerprint ?? row.property?.sourceFingerprint ?? null,
+    sourceRecordVersion: row.sourceRecordVersion ?? row.permit?.sourceRecordVersion ?? row.property?.sourceRecordVersion ?? 1,
+    lastSourceChangedAt:
+      row.lastSourceChangedAt?.toISOString() ??
+      row.permit?.lastSourceChangedAt?.toISOString() ??
+      row.property?.lastSourceChangedAt?.toISOString() ??
+      null,
+    sourceChangeSummary: base.sourceChangeSummary,
+    scoreBreakdown: base.scoreBreakdown,
+    requiresReview: row.requiresReview,
+    duplicateRiskScore: row.duplicateRiskScore,
     assignedMembershipId: row.assignedMembershipId ?? null,
     address: row.address ?? row.property?.address ?? "",
     city: row.city ?? row.property?.city?.name ?? "",
@@ -241,6 +284,10 @@ function mapDbOpportunity(row: OpportunityRow): PlotOpportunity {
       createdAt: contact.createdAt.toISOString(),
       updatedAt: contact.updatedAt.toISOString(),
       lastVerifiedAt: contact.lastVerifiedAt?.toISOString() ?? null
+      ,
+      normalizedEmail: contact.normalizedEmail ?? null,
+      normalizedPhone: contact.normalizedPhone ?? null,
+      contactSourceRank: contact.contactSourceRank
     })),
     activities: row.activities.map((activity) => ({
       id: activity.id,
@@ -318,6 +365,15 @@ function mapDbOpportunity(row: OpportunityRow): PlotOpportunity {
       refreshedAt: result.refreshedAt.toISOString(),
       lastVerifiedAt: result.lastVerifiedAt?.toISOString() ?? null
     }))
+  });
+
+  const rescored = calculateOpportunityScore(hydrated);
+
+  return {
+    ...hydrated,
+    opportunityScore: rescored.total,
+    reasonSummary: rescored.reasons,
+    scoreBreakdown: rescored.breakdown
   };
 }
 
@@ -342,6 +398,12 @@ function applyOpportunityFilters(
   const jurisdictionFilter =
     query.jurisdiction && query.jurisdiction !== "All jurisdictions" ? query.jurisdiction : null;
   const territoryFilter = query.territory && query.territory !== "All territories" ? query.territory : null;
+  const search = query.search?.trim().toLowerCase() ?? "";
+  const jobFit = query.jobFit && query.jobFit !== "all" ? query.jobFit : null;
+  const recency = query.recency && query.recency !== "all" ? query.recency : null;
+  const minScore = typeof query.minScore === "number" && Number.isFinite(query.minScore) ? query.minScore : null;
+  const hasContactInfo = query.hasContactInfo ?? false;
+  const notYetContacted = query.notYetContacted ?? false;
   const projectSegment = query.projectSegment && query.projectSegment !== "all" ? query.projectSegment : null;
   const status = query.status ?? "all";
   const sort = query.sort ?? "score";
@@ -375,6 +437,49 @@ function applyOpportunityFilters(
 
     if (projectSegment && opportunity.projectSegment !== projectSegment) {
       return false;
+    }
+
+    if (jobFit && opportunity.jobFit !== jobFit) {
+      return false;
+    }
+
+    if (recency && opportunity.recencyBucket !== recency) {
+      return false;
+    }
+
+    if (minScore !== null && opportunity.opportunityScore < minScore) {
+      return false;
+    }
+
+    if (hasContactInfo && !(opportunity.phone || opportunity.email || opportunity.website)) {
+      return false;
+    }
+
+    if (notYetContacted && opportunity.bidStatus === "contacted") {
+      return false;
+    }
+
+    if (search) {
+      const haystack = [
+        opportunity.address,
+        opportunity.parcelNumber,
+        opportunity.lotNumber,
+        opportunity.city,
+        opportunity.county,
+        opportunity.builderName,
+        opportunity.preferredSalesName,
+        opportunity.legalEntityName,
+        opportunity.sourceName,
+        opportunity.sourceJurisdiction,
+        ...opportunity.reasonSummary
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      if (!haystack.includes(search)) {
+        return false;
+      }
     }
 
     if (status === "queue") {
@@ -616,6 +721,7 @@ export async function getBuilderRecords() {
         id: builder.id,
         name: builder.preferredSalesName ?? builder.name,
         normalizedName: builder.normalizedName,
+        builderIdentityKey: builder.builderIdentityKey ?? null,
         rawSourceName: builder.rawSourceName ?? builder.name,
         preferredSalesName: builder.preferredSalesName ?? null,
         legalEntityName: builder.company?.legalName ?? builder.name,
@@ -683,6 +789,17 @@ export async function getBuilderRecords() {
           sourceLabel: builder.contacts.find((contact) => contact.isPrimary)?.sourceLabel ?? builder.company?.contactSource ?? null,
           sourceUrl: builder.contacts.find((contact) => contact.isPrimary)?.sourceUrl ?? builder.company?.contactUrl ?? null
         },
+        contractorMetrics: {
+          totalPermits: 0,
+          permitsLast30Days: 0,
+          permitsLast60Days: 0,
+          permitsLast90Days: 0,
+          avgProjectValue: 0,
+          projectTypes: [],
+          locations: [],
+          outreachStatus: "new",
+          exportLabel: `${builder.preferredSalesName ?? builder.name} outreach`
+        },
         properties: [...propertyMap.values()],
         openOpportunityIds: openOpportunities.map((opportunity) => opportunity.id),
         entityMatches: builder.entityMatches.map((match) => ({
@@ -717,6 +834,7 @@ export async function getBuilderRecords() {
 
       const score = calculateLeadScore(record);
       record.leadScore = score.total;
+      record.contractorMetrics = buildContractorMetrics(record);
 
       return record;
     })
@@ -747,6 +865,11 @@ export async function getSourceRecords() {
               createdAt: "desc"
             },
             take: 5
+          },
+          rawRecords: {
+            select: {
+              changeStatus: true
+            }
           }
         }
       },
@@ -786,6 +909,44 @@ export async function getSourceRecords() {
   return sources.map((source) => {
     const latestRun = source.syncRuns[0];
     const latestHealth = source.healthChecks[0];
+    const dataOrigin = inferSourceDataOrigin(source.sourceUrl);
+    const changeCounts = summarizeRawRecordChanges(
+      latestRun?.rawRecords.map((record) => record.changeStatus) ?? []
+    );
+    const freshness = evaluateSourceFreshness({
+      syncFrequency: source.syncFrequency,
+      syncStatus: source.syncStatus,
+      lastSuccessfulSync: source.lastSuccessfulSync?.toISOString() ?? null
+    });
+    const liveDataConfidence = computeLiveDataConfidence({
+      sourceConfidenceScore: source.sourceConfidenceScore,
+      sourceFreshnessScore: source.sourceFreshnessScore,
+      syncStatus: source.syncStatus,
+      freshnessState: freshness.state,
+      latestFetchedCount: latestRun?.fetchedCount ?? 0,
+      latestNormalizedCount: latestRun?.normalizedCount ?? 0,
+      parseFailureCount: latestHealth?.parseFailureCount ?? 0,
+      missingFieldCount: latestHealth?.missingFieldCount ?? 0,
+      duplicateCount: latestHealth?.duplicateCount ?? 0,
+      dataOrigin
+    });
+    const healthScore = computeSourceHealthScore({
+      availabilityScore: source.syncStatus === "success" ? 96 : source.syncStatus === "warning" ? 68 : source.syncStatus === "failed" ? 18 : 52,
+      completenessScore: latestHealth?.completenessScore ?? latestRun?.completenessScore ?? 0,
+      freshnessScore: source.sourceFreshnessScore,
+      parseFailureCount: latestHealth?.parseFailureCount ?? 0,
+      missingFieldCount: latestHealth?.missingFieldCount ?? 0,
+      duplicateCount: latestHealth?.duplicateCount ?? 0,
+      blockedCount: latestHealth?.blockedCount ?? latestRun?.blockedCount ?? 0,
+      warningFlags:
+        latestHealth?.warningFlags && Array.isArray(latestHealth.warningFlags)
+          ? latestHealth.warningFlags.map((flag) => String(flag))
+          : []
+    });
+    const warningFlags =
+      latestHealth?.warningFlags && Array.isArray(latestHealth.warningFlags)
+        ? latestHealth.warningFlags.map((flag) => String(flag))
+        : [];
 
     return {
       id: source.id,
@@ -810,6 +971,22 @@ export async function getSourceRecords() {
       syncStatus: source.syncStatus,
       sourceConfidenceScore: source.sourceConfidenceScore,
       sourceFreshnessScore: source.sourceFreshnessScore,
+      dataOrigin,
+      freshnessState: freshness.state,
+      freshnessDetail: freshness.detail,
+      liveDataConfidence,
+      latestFetchedCount: latestRun?.fetchedCount ?? 0,
+      latestNormalizedCount: latestRun?.normalizedCount ?? 0,
+      latestDedupedCount: latestRun?.dedupedCount ?? 0,
+      newRecordCount: changeCounts.newRecordCount,
+      updatedRecordCount: changeCounts.updatedRecordCount,
+      unchangedRecordCount: changeCounts.unchangedRecordCount,
+      errorRecordCount: changeCounts.errorRecordCount,
+      blockedCount: latestHealth?.blockedCount ?? latestRun?.blockedCount ?? 0,
+      completenessScore: latestHealth?.completenessScore ?? latestRun?.completenessScore ?? 0,
+      healthScore,
+      driftScore: latestRun?.driftScore ?? 0,
+      warningFlags,
       lastHealthCheckedAt: latestHealth?.checkedAt.toISOString() ?? null,
       parseFailureCount: latestHealth?.parseFailureCount ?? 0,
       missingFieldCount: latestHealth?.missingFieldCount ?? 0,
@@ -877,14 +1054,110 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     getBuilderRecords()
   ]);
 
+  const plotQueue = opportunityData.opportunities.filter(
+    (item) => !["contacted", "won", "lost", "not_a_fit"].includes(item.bidStatus)
+  );
+  const highPriority = plotQueue.filter((item) => item.opportunityScore >= 80);
+  const newThisWeek = plotQueue.filter((item) => item.recencyBucket === "0_7_days");
+  const topNeighborhoods = [...new Map(
+    plotQueue
+      .filter((item) => item.marketCluster)
+      .map((item) => [item.marketCluster as string, plotQueue.filter((candidate) => candidate.marketCluster === item.marketCluster).length])
+  ).entries()]
+    .sort((left, right) => right[1] - left[1]);
+  const missingContact = plotQueue.filter((item) => !item.phone && !item.email && !item.website);
+  const unreviewed = plotQueue.filter((item) => item.bidStatus === "not_reviewed" || item.bidStatus === "researching_builder");
+  const validation = summarizeTransformationConsistency(opportunityData.opportunities);
+
   return {
     topBuilders: builders.slice(0, 5),
-    plotQueue: opportunityData.opportunities.filter(
-      (item) => !["contacted", "won", "lost", "not_a_fit"].includes(item.bidStatus)
-    ),
+    plotQueue,
     newestPermits: opportunityData.opportunities.slice(0, 8).map(buildPermitFromOpportunity),
     syncHealth: sources,
-    followUpsDue: opportunityData.opportunities.filter((item) => item.bidStatus === "contacted" && Boolean(item.suggestedFollowUpDate))
+    followUpsDue: opportunityData.opportunities.filter((item) => item.bidStatus === "contacted" && Boolean(item.suggestedFollowUpDate)),
+    insights: [
+      {
+        id: "new-permits",
+        label: "New permits this week",
+        value: String(newThisWeek.length),
+        detail: "Fresh permit and development signals from the last 7 days.",
+        href: "/dashboard?sort=newest"
+      },
+      {
+        id: "high-priority",
+        label: "High-priority leads",
+        value: String(highPriority.length),
+        detail: "Queue records scoring 80+ with strong fit or urgency.",
+        href: "/dashboard"
+      },
+      {
+        id: "active-contractors",
+        label: "Active contractors",
+        value: String(builders.filter((builder) => builder.contractorMetrics.totalPermits > 0).length),
+        detail: "Builders and contractors with current permit activity.",
+        href: "/builders"
+      },
+      {
+        id: "top-neighborhoods",
+        label: "Top neighborhoods",
+        value: topNeighborhoods[0]?.[0] ?? "N/A",
+        detail: topNeighborhoods[0] ? `${topNeighborhoods[0][1]} active leads in the hottest cluster.` : "No active clustering yet.",
+        href: "/dashboard"
+      },
+      {
+        id: "missing-contact",
+        label: "Missing contact data",
+        value: String(missingContact.length),
+        detail: "Leads that still need phone, email, or website research.",
+        href: "/dashboard"
+      },
+      {
+        id: "unreviewed",
+        label: "Unreviewed leads",
+        value: String(unreviewed.length),
+        detail: "Records still waiting for builder verification or contact review.",
+        href: "/dashboard"
+      },
+      {
+        id: "validation",
+        label: "Validation mismatches",
+        value: String(validation.mismatchCount),
+        detail: "Sampled opportunities whose stored intelligence no longer matches recomputed values.",
+        href: "/sources"
+      }
+    ],
+    savedViews: [
+      {
+        id: "new-high-priority",
+        label: "New high-priority leads",
+        description: "Fresh, high-scoring opportunities to work first.",
+        href: "/dashboard?minScore=80&recency=0_7_days"
+      },
+      {
+        id: "contractor-targets",
+        label: "Contractor targets",
+        description: "Most active builder and contractor relationships.",
+        href: "/builders"
+      },
+      {
+        id: "uncontacted-leads",
+        label: "Uncontacted leads",
+        description: "Queue items that have not moved into Contacted yet.",
+        href: "/dashboard"
+      },
+      {
+        id: "shelving-opportunities",
+        label: "Shelving opportunities",
+        description: "Garage and storage-friendly records worth a shelving pitch.",
+        href: "/dashboard?jobFit=shelving"
+      },
+      {
+        id: "insulation-opportunities",
+        label: "Insulation opportunities",
+        description: "High-fit insulation projects across the corridor.",
+        href: "/dashboard?jobFit=insulation"
+      }
+    ]
   };
 }
 

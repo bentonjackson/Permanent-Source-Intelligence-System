@@ -8,9 +8,9 @@ export default async function BuildersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Builder View"
-        title="Builders with active lots and early build signals"
-        description="Use this after the plot queue when you want to see all open lots tied to the same builder."
+        eyebrow="Contractor Intelligence"
+        title="Builder and contractor activity across the corridor"
+        description="Use this view to spot the most active companies, see where they are building, and decide who deserves outreach first."
       />
       <BuilderList builders={builders} />
     </div>

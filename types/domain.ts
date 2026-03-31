@@ -26,6 +26,40 @@ export type ProjectSegment =
   | "multifamily"
   | "commercial";
 
+export type LeadType =
+  | "homeowner"
+  | "contractor"
+  | "builder"
+  | "commercial"
+  | "unknown";
+
+export type JobFit =
+  | "insulation"
+  | "shelving"
+  | "both"
+  | "low";
+
+export type ProjectStageStatus =
+  | "new"
+  | "active"
+  | "near_complete"
+  | "closed";
+
+export type OpportunityReason =
+  | "garage"
+  | "basement"
+  | "new_build"
+  | "addition"
+  | "remodel"
+  | "commercial_shell"
+  | "unknown";
+
+export type RecencyBucket =
+  | "0_7_days"
+  | "8_30_days"
+  | "31_90_days"
+  | "older";
+
 export type BidStatus =
   | "not_reviewed"
   | "researching_builder"
@@ -48,6 +82,8 @@ export type PermitClassification =
 
 export type SyncStatus = "idle" | "running" | "success" | "warning" | "failed";
 export type ConnectorType = "document" | "search" | "portal" | "gis_planning";
+export type SourceFreshnessState = "fresh" | "aging" | "stale" | "failed" | "unknown";
+export type SourceDataOrigin = "live" | "manual" | "mock" | "unknown";
 
 export type EntityRoleType =
   | "builder"
@@ -183,6 +219,7 @@ export interface BuilderRecord {
   id: string;
   name: string;
   normalizedName: string;
+  builderIdentityKey: string | null;
   rawSourceName: string | null;
   preferredSalesName: string | null;
   legalEntityName: string | null;
@@ -223,6 +260,17 @@ export interface BuilderRecord {
     sourceLabel?: string | null;
     sourceUrl?: string | null;
   };
+  contractorMetrics: {
+    totalPermits: number;
+    permitsLast30Days: number;
+    permitsLast60Days: number;
+    permitsLast90Days: number;
+    avgProjectValue: number;
+    projectTypes: string[];
+    locations: string[];
+    outreachStatus: "new" | "contacted" | "partner";
+    exportLabel: string;
+  };
   properties: PropertyRecord[];
   openOpportunityIds: string[];
   entityMatches: EntityMatchRecord[];
@@ -249,7 +297,9 @@ export interface OpportunityContact {
   roleTitle: string | null;
   companyName: string | null;
   email: string | null;
+  normalizedEmail?: string | null;
   phone: string | null;
+  normalizedPhone?: string | null;
   mobilePhone: string | null;
   officePhone: string | null;
   website: string | null;
@@ -262,6 +312,7 @@ export interface OpportunityContact {
   confidenceScore: number;
   qualityScore: number;
   qualityBand: ContactQualityBand;
+  contactSourceRank?: number;
   isPrimary: boolean;
   createdAt: string;
   updatedAt: string;
@@ -332,6 +383,17 @@ export interface ReviewQueueItemRecord {
 export interface PlotOpportunity {
   id: string;
   assignedMembershipId: string | null;
+  opportunityIdentityKey: string | null;
+  propertyIdentityKey: string | null;
+  permitIdentityKey: string | null;
+  builderIdentityKey: string | null;
+  sourceFingerprint: string | null;
+  sourceRecordVersion: number;
+  lastSourceChangedAt: string | null;
+  sourceChangeSummary: string[];
+  scoreBreakdown: Array<{ label: string; value: number }>;
+  requiresReview: boolean;
+  duplicateRiskScore: number;
   address: string;
   city: string;
   county: string;
@@ -373,11 +435,20 @@ export interface PlotOpportunity {
   readinessToContact: ReadinessToContact;
   clusterId: string | null;
   signalDate: string;
+  addressState: string | null;
+  addressZip: string | null;
+  neighborhood: string | null;
   estimatedProjectValue: number | null;
   landValue: number | null;
   improvementValue: number | null;
   classification: PermitClassification;
   projectSegment: ProjectSegment;
+  leadType: LeadType;
+  jobFit: JobFit;
+  projectStageStatus: ProjectStageStatus;
+  opportunityReason: OpportunityReason;
+  recencyBucket: RecencyBucket;
+  marketCluster: string | null;
   opportunityType: OpportunityType;
   buildReadiness: BuildReadiness;
   vacancyConfidence: number;
@@ -426,12 +497,24 @@ export interface PlotOpportunity {
 
 export interface PermitRecord {
   id: string;
+  permitIdentityKey?: string | null;
+  sourceFingerprint?: string | null;
+  sourceRecordVersion?: number;
+  lastSourceChangedAt?: string | null;
+  sourceChangeSummary?: string[];
   permitNumber: string;
   permitType: string;
   permitSubtype: string | null;
   permitStatus: string;
   applicationDate: string | null;
   issueDate: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  contractorName?: string | null;
+  companyName?: string | null;
+  permitDescription?: string | null;
+  projectValue?: number | null;
   estimatedProjectValue: number | null;
   landValue: number | null;
   improvementValue: number | null;
@@ -464,6 +547,22 @@ export interface SourceRecord {
   syncStatus: SyncStatus;
   sourceConfidenceScore: number;
   sourceFreshnessScore: number;
+  dataOrigin?: SourceDataOrigin;
+  freshnessState?: SourceFreshnessState;
+  freshnessDetail?: string;
+  liveDataConfidence?: number;
+  latestFetchedCount?: number;
+  latestNormalizedCount?: number;
+  latestDedupedCount?: number;
+  newRecordCount?: number;
+  updatedRecordCount?: number;
+  unchangedRecordCount?: number;
+  errorRecordCount?: number;
+  blockedCount?: number;
+  completenessScore?: number;
+  healthScore?: number;
+  driftScore?: number;
+  warningFlags?: string[];
   lastHealthCheckedAt?: string | null;
   parseFailureCount?: number;
   missingFieldCount?: number;
@@ -482,4 +581,17 @@ export interface DashboardSnapshot {
   newestPermits: PermitRecord[];
   syncHealth: SourceRecord[];
   followUpsDue: PlotOpportunity[];
+  insights: Array<{
+    id: string;
+    label: string;
+    value: string;
+    detail: string;
+    href: string;
+  }>;
+  savedViews: Array<{
+    id: string;
+    label: string;
+    description: string;
+    href: string;
+  }>;
 }

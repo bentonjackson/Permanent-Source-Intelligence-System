@@ -20,11 +20,14 @@ export function PageHeader({
           <h2 className="mt-4 max-w-4xl font-serif text-[2.25rem] leading-[0.96] tracking-[-0.04em] text-white md:text-[3rem]">
             {title}
           </h2>
-          <div className="mt-4 h-px w-24 bg-red-500/55" />
+          <div className="mt-4 flex items-center gap-3">
+            <div className="h-px w-16 bg-red-400/75" />
+            <div className="h-px w-10 bg-red-300/35" />
+          </div>
           <p className="mt-4 max-w-3xl text-sm leading-6 text-white/62 lg:text-[15px]">{description}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <Badge tone="slate" className="hidden lg:inline-flex">
+          <Badge tone="red" className="hidden lg:inline-flex">
             Architectural Operations System
           </Badge>
           {actions ?? (

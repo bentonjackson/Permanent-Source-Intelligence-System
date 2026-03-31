@@ -49,6 +49,41 @@ function toNullableDate(value: unknown) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function normalizeEmail(value: string | null | undefined) {
+  const normalized = toNullableString(value);
+  return normalized ? normalized.toLowerCase() : null;
+}
+
+function normalizePhone(value: string | null | undefined) {
+  const normalized = toNullableString(value)?.replace(/[^\d+]/g, "") ?? null;
+
+  if (!normalized) {
+    return null;
+  }
+
+  const digitsOnly = normalized.replace(/\D/g, "");
+
+  if (digitsOnly.length < 10) {
+    return null;
+  }
+
+  return digitsOnly.length === 11 && digitsOnly.startsWith("1") ? digitsOnly.slice(1) : digitsOnly;
+}
+
+function contactSourceRank(sourceLabel: string | null | undefined, confidenceScore: number | null | undefined) {
+  const normalizedLabel = toNullableString(sourceLabel)?.toLowerCase() ?? "";
+
+  if (normalizedLabel.includes("manual")) {
+    return 100;
+  }
+
+  if (normalizedLabel.includes("verified")) {
+    return 85;
+  }
+
+  return Math.max(0, Math.min(100, confidenceScore ?? 50));
+}
+
 function splitFullName(value: string | null) {
   if (!value) {
     return {
@@ -70,6 +105,62 @@ function splitFullName(value: string | null) {
     firstName: parts[0] ?? null,
     lastName: parts.slice(1).join(" ") || null
   };
+}
+
+function buildWorkflowUpdate(input: {
+  currentStage: PipelineStage;
+  bidStatus: BidStatus;
+  nextStage: PipelineStage;
+  nextBidStatus: BidStatus;
+  nextFollowUpAt?: Date | null;
+  followUpNeeded?: boolean;
+  needsFollowUp?: boolean;
+  quoteRequestedAt?: Date | null;
+  quoteSentAt?: Date | null;
+  contactSummary?: string | null;
+  nextAction?: string | null;
+}) {
+  const update: Record<string, unknown> = {};
+  const closed = isClosedBidStatus(input.nextBidStatus) || isClosedPipelineStage(input.nextStage);
+
+  if (closed) {
+    update.closedAt = new Date();
+    update.followUpNeeded = false;
+    update.needsFollowUp = false;
+    update.nextFollowUpAt = null;
+    update.nextFollowUpDate = null;
+    update.suggestedFollowUpDate = null;
+    update.nextAction = "No further action needed.";
+  } else if (
+    (input.nextStage === PipelineStage.CONTACTED || input.nextStage === PipelineStage.QUOTED) &&
+    (input.followUpNeeded || input.needsFollowUp) &&
+    !input.nextFollowUpAt
+  ) {
+    const followUp = addDays(new Date(), input.nextStage === PipelineStage.QUOTED ? 3 : 2);
+    update.nextFollowUpAt = followUp;
+    update.nextFollowUpDate = followUp;
+    update.suggestedFollowUpDate = followUp;
+    update.followUpNeeded = true;
+    update.needsFollowUp = true;
+  }
+
+  if (input.nextStage === PipelineStage.QUOTED && !input.quoteRequestedAt) {
+    update.quoteRequestedAt = new Date();
+  }
+
+  if (input.nextBidStatus === BidStatus.QUOTED && !input.quoteSentAt) {
+    update.quoteSentAt = new Date();
+  }
+
+  if (input.nextStage === PipelineStage.CONTACTED && !input.contactSummary) {
+    update.contactSummary = "Working contact record; add direct phone or email if available.";
+  }
+
+  if (!closed && !input.nextAction) {
+    update.nextAction = "Log the next outreach step and keep the follow-up date current.";
+  }
+
+  return update;
 }
 
 function stageFromBidStatus(value: BidStatus): PipelineStage {
@@ -445,8 +536,27 @@ export async function updateOpportunityWorkflow(
           ? "lost"
           : nextBidStatus === BidStatus.NOT_A_FIT
             ? "not_a_fit"
-            : opportunity.outcomeStatus ??
+          : opportunity.outcomeStatus ??
               "open");
+    const nextFollowUpAt =
+      input.nextFollowUpAt !== undefined ? toNullableDate(input.nextFollowUpAt) : opportunity.nextFollowUpAt;
+    const workflowSafetyUpdate = buildWorkflowUpdate({
+      currentStage: opportunity.currentStage,
+      bidStatus: opportunity.bidStatus,
+      nextStage,
+      nextBidStatus,
+      nextFollowUpAt,
+      followUpNeeded:
+        input.followUpNeeded !== undefined ? input.followUpNeeded : opportunity.followUpNeeded,
+      needsFollowUp:
+        input.needsFollowUp !== undefined ? input.needsFollowUp : opportunity.needsFollowUp,
+      quoteRequestedAt:
+        input.quoteRequestedAt !== undefined ? toNullableDate(input.quoteRequestedAt) : opportunity.quoteRequestedAt,
+      quoteSentAt: input.quoteSentAt !== undefined ? toNullableDate(input.quoteSentAt) : opportunity.quoteSentAt,
+      contactSummary:
+        input.contactSummary !== undefined ? toNullableString(input.contactSummary) : opportunity.contactSummary,
+      nextAction: input.nextAction !== undefined ? toNullableString(input.nextAction) : opportunity.nextAction
+    });
 
     await tx.plotOpportunity.update({
       where: {
@@ -493,7 +603,8 @@ export async function updateOpportunityWorkflow(
           input.secondFollowUpDate !== undefined ? toNullableDate(input.secondFollowUpDate) : undefined,
         followedUpOn:
           input.followedUpOn !== undefined ? toNullableDate(input.followedUpOn) : undefined,
-        closedAt: input.closedAt !== undefined ? toNullableDate(input.closedAt) : undefined
+        closedAt: input.closedAt !== undefined ? toNullableDate(input.closedAt) : undefined,
+        ...workflowSafetyUpdate
       }
     });
 
@@ -562,7 +673,25 @@ export async function createOpportunityContact(
     const names = splitFullName(fullName);
     const firstName = toNullableString(input.firstName) ?? names.firstName;
     const lastName = toNullableString(input.lastName) ?? names.lastName;
+    const normalizedEmail = normalizeEmail(input.email);
+    const normalizedPhone =
+      normalizePhone(input.phone) ?? normalizePhone(input.mobilePhone) ?? normalizePhone(input.officePhone);
     const shouldBePrimary = input.isPrimary ?? opportunity.contacts.length === 0;
+    const existingContact =
+      normalizedEmail || normalizedPhone
+        ? await tx.contact.findFirst({
+            where: {
+              opportunityId,
+              OR: [
+                ...(normalizedEmail ? [{ normalizedEmail }] : []),
+                ...(normalizedPhone ? [{ normalizedPhone }] : [])
+              ]
+            },
+            select: {
+              id: true
+            }
+          })
+        : null;
 
     if (shouldBePrimary) {
       await tx.contact.updateMany({
@@ -575,44 +704,58 @@ export async function createOpportunityContact(
       });
     }
 
-    await tx.contact.create({
-      data: {
-        organizationId,
-        builderId: opportunity.builderId,
-        companyId: null,
-        opportunityId,
-        fullName,
-        firstName,
-        lastName,
-        roleTitle: toNullableString(input.roleTitle),
-        companyName: toNullableString(input.companyName) ?? opportunity.legalEntityName ?? opportunity.builderName,
-        email: toNullableString(input.email),
-        phone: toNullableString(input.phone),
-        mobilePhone: toNullableString(input.mobilePhone),
-        officePhone: toNullableString(input.officePhone),
-        publicProfileUrl: null,
-        website: toNullableString(input.website),
-        linkedinUrl: toNullableString(input.linkedinUrl),
-        preferredContactMethod: input.preferredContactMethod ?? null,
-        bestTimeToContact: toNullableString(input.bestTimeToContact),
-        notes: toNullableString(input.notes),
-        mailingAddress: opportunity.mailingAddress,
-        cityState: opportunity.cityState,
-        sourceLabel: toNullableString(input.sourceLabel) ?? opportunity.sourceName,
-        sourceUrl: toNullableString(input.sourceUrl) ?? opportunity.sourceUrl,
-        confidenceScore: input.confidenceScore ?? 60,
-        qualityScore: input.confidenceScore ?? 60,
-        qualityBand:
-          input.confidenceScore && input.confidenceScore >= 85
-            ? "TIER_1"
-            : input.confidenceScore && input.confidenceScore >= 65
-              ? "TIER_2"
-              : input.confidenceScore && input.confidenceScore >= 45
-                ? "TIER_3"
-                : "TIER_4",
-        isPrimary: shouldBePrimary
-      }
-    });
+    const contactData = {
+      organizationId,
+      builderId: opportunity.builderId,
+      companyId: null,
+      opportunityId,
+      fullName,
+      firstName,
+      lastName,
+      roleTitle: toNullableString(input.roleTitle),
+      companyName: toNullableString(input.companyName) ?? opportunity.legalEntityName ?? opportunity.builderName,
+      email: toNullableString(input.email),
+      normalizedEmail,
+      phone: toNullableString(input.phone),
+      normalizedPhone,
+      mobilePhone: toNullableString(input.mobilePhone),
+      officePhone: toNullableString(input.officePhone),
+      publicProfileUrl: null,
+      website: toNullableString(input.website),
+      linkedinUrl: toNullableString(input.linkedinUrl),
+      preferredContactMethod: input.preferredContactMethod ?? null,
+      bestTimeToContact: toNullableString(input.bestTimeToContact),
+      notes: toNullableString(input.notes),
+      mailingAddress: opportunity.mailingAddress,
+      cityState: opportunity.cityState,
+      sourceLabel: toNullableString(input.sourceLabel) ?? opportunity.sourceName,
+      sourceUrl: toNullableString(input.sourceUrl) ?? opportunity.sourceUrl,
+      confidenceScore: input.confidenceScore ?? 60,
+      qualityScore: input.confidenceScore ?? 60,
+      qualityBand:
+        input.confidenceScore && input.confidenceScore >= 85
+          ? "TIER_1"
+          : input.confidenceScore && input.confidenceScore >= 65
+            ? "TIER_2"
+            : input.confidenceScore && input.confidenceScore >= 45
+              ? "TIER_3"
+              : "TIER_4",
+      contactSourceRank: contactSourceRank(input.sourceLabel ?? opportunity.sourceName, input.confidenceScore ?? 60),
+      isPrimary: shouldBePrimary
+    } as const;
+
+    if (existingContact) {
+      await tx.contact.update({
+        where: {
+          id: existingContact.id
+        },
+        data: contactData
+      });
+    } else {
+      await tx.contact.create({
+        data: contactData
+      });
+    }
 
     await refreshOpportunityWorkflowRollup(tx, opportunityId, organizationId);
   });
@@ -665,6 +808,9 @@ export async function updateOpportunityContact(
   await prisma.$transaction(async (tx) => {
     const fullName = toNullableString(input.fullName) ?? null;
     const names = splitFullName(fullName);
+    const normalizedEmail = normalizeEmail(input.email);
+    const normalizedPhone =
+      normalizePhone(input.phone) ?? normalizePhone(input.mobilePhone) ?? normalizePhone(input.officePhone);
 
     if (input.isPrimary) {
       await tx.contact.updateMany({
@@ -688,7 +834,12 @@ export async function updateOpportunityContact(
         roleTitle: input.roleTitle !== undefined ? toNullableString(input.roleTitle) : undefined,
         companyName: input.companyName !== undefined ? toNullableString(input.companyName) : undefined,
         email: input.email !== undefined ? toNullableString(input.email) : undefined,
+        normalizedEmail: input.email !== undefined ? normalizedEmail : undefined,
         phone: input.phone !== undefined ? toNullableString(input.phone) : undefined,
+        normalizedPhone:
+          input.phone !== undefined || input.mobilePhone !== undefined || input.officePhone !== undefined
+            ? normalizedPhone
+            : undefined,
         mobilePhone: input.mobilePhone !== undefined ? toNullableString(input.mobilePhone) : undefined,
         officePhone: input.officePhone !== undefined ? toNullableString(input.officePhone) : undefined,
         website: input.website !== undefined ? toNullableString(input.website) : undefined,
@@ -702,6 +853,10 @@ export async function updateOpportunityContact(
         sourceUrl: input.sourceUrl !== undefined ? toNullableString(input.sourceUrl) : undefined,
         confidenceScore: input.confidenceScore !== undefined && input.confidenceScore !== null ? input.confidenceScore : undefined,
         qualityScore: input.confidenceScore !== undefined && input.confidenceScore !== null ? input.confidenceScore : undefined,
+        contactSourceRank:
+          input.confidenceScore !== undefined || input.sourceLabel !== undefined
+            ? contactSourceRank(input.sourceLabel, input.confidenceScore)
+            : undefined,
         isPrimary: input.isPrimary !== undefined ? input.isPrimary : undefined
       }
     });

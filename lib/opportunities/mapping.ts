@@ -1,7 +1,13 @@
 import { calculateOpportunityScore } from "@/lib/scoring/lead-scoring";
+import {
+  buildBuilderIdentityKey,
+  buildOpportunityIdentityKey,
+  buildPermitIdentityKey,
+  buildPropertyIdentityKey,
+  buildStableOpportunityId
+} from "@/lib/connectors/shared/identity";
 import { NormalizedPermitInput } from "@/lib/connectors/shared/types";
 import {
-  deriveOpportunityId,
   inferBuildReadiness,
   inferOpportunityType,
   inferProjectSegment,
@@ -10,6 +16,7 @@ import {
 } from "@/lib/connectors/shared/normalization";
 import { DEFAULT_OPEN_TERRITORY_LABEL } from "@/lib/app/defaults";
 import { resolveEntityIdentity } from "@/lib/entities/contact-identity";
+import { hydrateOpportunityIntelligence } from "@/lib/intelligence/lead-intelligence";
 import { PlotOpportunity } from "@/types/domain";
 
 function sourceDomain(sourceUrl: string) {
@@ -134,9 +141,24 @@ export function mapNormalizedPermitToOpportunity(record: NormalizedPermitInput):
     record.permitSubtype,
     record.projectDescription
   ]);
+  const permitIdentityKey = buildPermitIdentityKey(record);
+  const propertyIdentityKey = buildPropertyIdentityKey(record);
+  const builderIdentityKey = buildBuilderIdentityKey(record);
+  const opportunityIdentityKey = buildOpportunityIdentityKey(record);
   const base: Omit<PlotOpportunity, "opportunityScore" | "reasonSummary"> = {
-    id: deriveOpportunityId(record),
+    id: buildStableOpportunityId(record),
     assignedMembershipId: null,
+    opportunityIdentityKey,
+    propertyIdentityKey,
+    permitIdentityKey,
+    builderIdentityKey,
+    sourceFingerprint: null,
+    sourceRecordVersion: 1,
+    lastSourceChangedAt: null,
+    sourceChangeSummary: [],
+    scoreBreakdown: [],
+    requiresReview: false,
+    duplicateRiskScore: 0,
     address: record.address,
     city: record.city,
     county: record.county,
@@ -178,11 +200,20 @@ export function mapNormalizedPermitToOpportunity(record: NormalizedPermitInput):
     readinessToContact: "research",
     clusterId: record.clusterId ?? record.subdivisionId ?? record.subdivision ?? null,
     signalDate: record.issueDate ?? record.applicationDate ?? new Date().toISOString(),
+    addressState: "IA",
+    addressZip: null,
+    neighborhood: record.subdivision ?? null,
     estimatedProjectValue: record.estimatedProjectValue ?? null,
     landValue: record.landValue ?? null,
     improvementValue: record.improvementValue ?? null,
     classification: record.classification,
     projectSegment,
+    leadType: "unknown",
+    jobFit: "low",
+    projectStageStatus: "new",
+    opportunityReason: "unknown",
+    recencyBucket: "older",
+    marketCluster: record.clusterId ?? record.subdivisionId ?? record.subdivision ?? null,
     opportunityType,
     buildReadiness,
     vacancyConfidence: inferVacancyConfidence({
@@ -238,11 +269,17 @@ export function mapNormalizedPermitToOpportunity(record: NormalizedPermitInput):
 
   base.readinessToContact = inferReadinessToContact(base);
   base.nextAction = inferNextAction(base);
-  const score = calculateOpportunityScore({ ...base, opportunityScore: 0, reasonSummary: [] });
+  const hydrated = hydrateOpportunityIntelligence({
+    ...base,
+    opportunityScore: 0,
+    reasonSummary: []
+  });
+  const score = calculateOpportunityScore(hydrated);
 
   return {
-    ...base,
+    ...hydrated,
     opportunityScore: score.total,
-    reasonSummary: score.reasons
+    reasonSummary: score.reasons,
+    scoreBreakdown: score.breakdown
   };
 }

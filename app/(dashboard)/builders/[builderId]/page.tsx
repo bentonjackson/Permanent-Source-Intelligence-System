@@ -96,6 +96,12 @@ export default async function BuilderDetailPage({ params }: { params: { builderI
               <p>Contractor registration: {builder.contractorRegistrationNumber ?? "Not found"} • {builder.contractorRegistrationStatus.replaceAll("_", " ")}</p>
               <p>Business entity: {builder.businessEntityNumber ?? "Not found"} • {builder.businessEntityStatus.replaceAll("_", " ")}</p>
               <p>Builder heat: {builder.builderHeatScore}</p>
+              <p>Outreach status: {builder.contractorMetrics.outreachStatus}</p>
+              <p>Total permits: {builder.contractorMetrics.totalPermits}</p>
+              <p>Permits last 30 / 60 / 90: {builder.contractorMetrics.permitsLast30Days} / {builder.contractorMetrics.permitsLast60Days} / {builder.contractorMetrics.permitsLast90Days}</p>
+              <p>Average job size: {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(builder.contractorMetrics.avgProjectValue)}</p>
+              <p>Project types: {builder.contractorMetrics.projectTypes.length ? builder.contractorMetrics.projectTypes.join(", ") : "Needs more permit history"}</p>
+              <p>Locations: {builder.contractorMetrics.locations.length ? builder.contractorMetrics.locations.join(", ") : "Unknown"}</p>
               <p>Next best action: {builder.nextBestAction}</p>
               <p>Last enriched: {formatDate(builder.lastEnrichedAt)}</p>
               <p>Stage: {builder.pipelineStage}</p>

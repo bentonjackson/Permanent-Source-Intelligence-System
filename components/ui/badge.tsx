@@ -12,12 +12,12 @@ export function Badge({
   children: ReactNode;
 }) {
   const tones = {
-    default: "border-white/14 bg-white/[0.05] text-white/86",
+    default: "border-red-400/18 bg-red-500/[0.08] text-red-50",
     green: "border-emerald-400/20 bg-emerald-400/10 text-emerald-100",
     amber: "border-amber-300/18 bg-amber-200/10 text-amber-100",
     blue: "border-red-400/22 bg-red-500/10 text-red-100",
-    slate: "border-white/10 bg-white/[0.035] text-white/62",
-    red: "border-red-500/32 bg-red-500/16 text-red-50"
+    slate: "border-red-400/18 bg-red-500/[0.07] text-white/90",
+    red: "border-red-400/36 bg-red-500/18 text-red-50"
   };
 
   return (

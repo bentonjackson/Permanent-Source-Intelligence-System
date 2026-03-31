@@ -1,0 +1,6 @@
+{
+  "/api/opportunities/[opportunityId]/move-to-contacted/route": "app/api/opportunities/[opportunityId]/move-to-contacted/route.js",
+  "/(dashboard)/dashboard/page": "app/(dashboard)/dashboard/page.js",
+  "/(dashboard)/contacted/page": "app/(dashboard)/contacted/page.js",
+  "/(dashboard)/builders/page": "app/(dashboard)/builders/page.js"
+}

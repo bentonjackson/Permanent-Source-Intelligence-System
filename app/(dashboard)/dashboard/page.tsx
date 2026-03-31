@@ -2,11 +2,10 @@ import { PageHeader } from "@/components/layout/page-header";
 import { PlotQueue } from "@/components/opportunities/plot-queue";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getRepOptions } from "@/lib/app/defaults";
-import { getBuilderEntityPresentation, getOpportunityEntityPresentation } from "@/lib/entities/contact-identity";
+import { getOpportunityEntityPresentation } from "@/lib/entities/contact-identity";
 import { COUNTIES_NEAR_ME_LABEL } from "@/lib/geo/territories";
 import { SourceRegistryTable } from "@/components/sources/source-registry-table";
-import { getBuilderRecords, getOpportunityData, getSourceRecords } from "@/lib/opportunities/live-data";
-import { formatDate } from "@/lib/utils";
+import { getDashboardSnapshot, getOpportunityData, getSourceRecords } from "@/lib/opportunities/live-data";
 
 export default async function DashboardPage({
   searchParams
@@ -16,35 +15,40 @@ export default async function DashboardPage({
     city?: string;
     jurisdiction?: string;
     territory?: string;
+    search?: string;
+    jobFit?: string;
+    recency?: string;
+    minScore?: string;
+    hasContactInfo?: string;
   };
 }) {
   const selectedCounty = searchParams?.county ?? COUNTIES_NEAR_ME_LABEL;
   const selectedCity = searchParams?.city ?? "All cities";
   const selectedJurisdiction = searchParams?.jurisdiction ?? "All jurisdictions";
   const selectedTerritory = searchParams?.territory ?? "All territories";
-  const [data, sources, builders, reps] = await Promise.all([
+  const [data, snapshot, sources, reps] = await Promise.all([
     getOpportunityData({
       county: searchParams?.county ?? null,
       city: searchParams?.city ?? null,
       jurisdiction: searchParams?.jurisdiction ?? null,
-      territory: searchParams?.territory ?? null
+      territory: searchParams?.territory ?? null,
+      search: searchParams?.search ?? null,
+      jobFit: (searchParams?.jobFit as "all" | "insulation" | "shelving" | "both" | "low" | undefined) ?? "all",
+      recency: (searchParams?.recency as "all" | "0_7_days" | "8_30_days" | "31_90_days" | "older" | undefined) ?? "all",
+      minScore: searchParams?.minScore ? Number(searchParams.minScore) : null,
+      hasContactInfo: searchParams?.hasContactInfo === "true" ? true : null
     }),
+    getDashboardSnapshot(),
     getSourceRecords(),
-    getBuilderRecords(),
     getRepOptions()
   ]);
   const plotQueue = data.opportunities.filter(
     (item) => !["contacted", "won", "lost", "not_a_fit"].includes(item.bidStatus)
   );
-  const followUpsDue = data.opportunities.filter((item) => item.bidStatus === "contacted" && item.suggestedFollowUpDate);
-  const mostActiveCounties = [...new Map(
-    plotQueue.map((opportunity) => [
-      opportunity.county,
-      plotQueue.filter((item) => item.county === opportunity.county).length
-    ])
-  ).entries()]
-    .sort((left, right) => right[1] - left[1])
-    .slice(0, 4);
+  const keyInsights = snapshot.insights.filter((insight) =>
+    ["new-permits", "high-priority", "missing-contact", "unreviewed"].includes(insight.id)
+  );
+  const primaryViews = snapshot.savedViews.slice(0, 3);
 
   return (
     <div className="space-y-6">
@@ -53,16 +57,31 @@ export default async function DashboardPage({
         title="Catch the build before the bid list fills up"
         description="Work the Plot Queue every morning to find early lots, verify the right builder contact, and move fast on insulation and shelving bids across Eastern Iowa."
       />
-      <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr_0.8fr]">
+      <section className="grid gap-4 xl:grid-cols-4">
+        {keyInsights.map((insight) => (
+          <a key={insight.id} href={insight.href}>
+            <Card className="h-full">
+              <CardHeader>
+                <p className="eyebrow-label">{insight.label}</p>
+                <CardTitle className="mt-2 text-[1.8rem]">{insight.value}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-white/62">{insight.detail}</p>
+              </CardContent>
+            </Card>
+          </a>
+        ))}
+      </section>
+      <section className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
         <Card>
           <CardHeader>
             <div>
-              <p className="eyebrow-label">Queue Priority</p>
-              <CardTitle className="mt-2">Top opportunities</CardTitle>
+              <p className="eyebrow-label">What Needs Action</p>
+              <CardTitle className="mt-2">Priority queue</CardTitle>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {plotQueue.slice(0, 5).map((opportunity) => (
+            {plotQueue.slice(0, 3).map((opportunity) => (
               <div key={opportunity.id} className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4">
                 {(() => {
                   const entity = getOpportunityEntityPresentation(opportunity);
@@ -72,7 +91,7 @@ export default async function DashboardPage({
                       <p className="font-serif text-lg tracking-[-0.03em] text-white">{entity.displayName}</p>
                       <p className="mt-2 text-sm text-white/84">{opportunity.address || opportunity.parcelNumber || "Parcel lead"}</p>
                       <p className="mt-1 text-sm text-white/54">
-                        {entity.displayName} • {opportunity.county}
+                        {opportunity.jobFit.replaceAll("_", " ")} • {opportunity.county}
                       </p>
                       {entity.relatedEntityName ? <p className="mt-1 text-sm text-white/42">Related entity: {entity.relatedEntityName}</p> : null}
                       <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-red-200">{opportunity.nextAction}</p>
@@ -86,44 +105,21 @@ export default async function DashboardPage({
         <Card>
           <CardHeader>
             <div>
-              <p className="eyebrow-label">Builder Heat</p>
-              <CardTitle className="mt-2">Hottest builders</CardTitle>
+              <p className="eyebrow-label">Saved Views</p>
+              <CardTitle className="mt-2">Go straight to work</CardTitle>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {builders.slice(0, 5).map((builder) => (
-              <div key={builder.id} className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4">
-                <p className="font-serif text-lg tracking-[-0.03em] text-white">{getBuilderEntityPresentation(builder).displayName}</p>
-                <p className="mt-2 text-sm text-white/56">
-                  {builder.openOpportunities} open properties • {builder.counties.join(", ")}
-                </p>
-              </div>
+            {primaryViews.map((view) => (
+              <a
+                key={view.id}
+                href={view.href}
+                className="block rounded-[16px] border border-red-900/85 bg-red-900 p-4 text-white shadow-[0_14px_28px_-18px_rgba(127,29,29,0.82)] transition-colors duration-200 hover:border-red-800 hover:bg-red-800"
+              >
+                <p className="font-serif text-lg tracking-[-0.03em] text-white">{view.label}</p>
+                <p className="mt-2 text-sm text-white/82">{view.description}</p>
+              </a>
             ))}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <div>
-              <p className="eyebrow-label">Corridor Activity</p>
-              <CardTitle className="mt-2">Most active counties</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {mostActiveCounties.map(([county, count]) => (
-              <div key={county} className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4">
-                <p className="font-serif text-lg tracking-[-0.03em] text-white">{county}</p>
-                <p className="mt-2 text-sm text-white/56">{count} open opportunity records</p>
-              </div>
-            ))}
-            {followUpsDue.length ? (
-              <div className="rounded-[16px] border border-white/10 bg-white/[0.04] p-4">
-                <p className="eyebrow-label">Next follow-up due</p>
-                <p className="mt-3 font-serif text-lg tracking-[-0.03em] text-white">
-                  {getOpportunityEntityPresentation(followUpsDue[0]).displayName}
-                </p>
-                <p className="mt-2 text-sm text-white/56">{formatDate(followUpsDue[0].suggestedFollowUpDate)}</p>
-              </div>
-            ) : null}
           </CardContent>
         </Card>
       </section>
@@ -137,6 +133,11 @@ export default async function DashboardPage({
         selectedCity={selectedCity}
         selectedJurisdiction={selectedJurisdiction}
         selectedTerritory={selectedTerritory}
+        initialSearch={searchParams?.search ?? ""}
+        initialJobFit={(searchParams?.jobFit as "all" | "insulation" | "shelving" | "both" | "low" | undefined) ?? "all"}
+        initialRecency={(searchParams?.recency as "all" | "0_7_days" | "8_30_days" | "31_90_days" | "older" | undefined) ?? "all"}
+        initialMinScore={(searchParams?.minScore as "0" | "60" | "80" | undefined) ?? "0"}
+        initialHasContactOnly={searchParams?.hasContactInfo === "true"}
         reps={reps}
       />
       <SourceRegistryTable sources={sources.filter((source) => source.active)} />

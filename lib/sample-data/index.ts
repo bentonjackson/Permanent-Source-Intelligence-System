@@ -1,7 +1,9 @@
 import { resolveEntityIdentity } from "@/lib/entities/contact-identity";
+import { buildContractorMetrics, hydrateOpportunityIntelligence } from "@/lib/intelligence/lead-intelligence";
 import { BuilderRecord, DashboardSnapshot, PlotOpportunity, SourceRecord } from "@/types/domain";
 
 const builderDefaults = {
+  builderIdentityKey: null,
   rawSourceName: null,
   preferredSalesName: null,
   legalEntityName: null,
@@ -26,10 +28,22 @@ const builderDefaults = {
   totalLandValue: 0,
   totalImprovementValue: 0,
   lastActivityAt: null,
+  contractorMetrics: {
+    totalPermits: 0,
+    permitsLast30Days: 0,
+    permitsLast60Days: 0,
+    permitsLast90Days: 0,
+    avgProjectValue: 0,
+    projectTypes: [],
+    locations: [],
+    outreachStatus: "new",
+    exportLabel: "Builder outreach"
+  },
   entityMatches: [],
   enrichmentAudit: []
 } satisfies Pick<
   BuilderRecord,
+  | "builderIdentityKey"
   | "rawSourceName"
   | "preferredSalesName"
   | "legalEntityName"
@@ -54,12 +68,24 @@ const builderDefaults = {
   | "totalLandValue"
   | "totalImprovementValue"
   | "lastActivityAt"
+  | "contractorMetrics"
   | "entityMatches"
   | "enrichmentAudit"
 >;
 
 const opportunityDefaults = {
   assignedMembershipId: null,
+  opportunityIdentityKey: null,
+  propertyIdentityKey: null,
+  permitIdentityKey: null,
+  builderIdentityKey: null,
+  sourceFingerprint: null,
+  sourceRecordVersion: 1,
+  lastSourceChangedAt: null,
+  sourceChangeSummary: [],
+  scoreBreakdown: [],
+  requiresReview: false,
+  duplicateRiskScore: 0,
   rawSourceName: null,
   normalizedEntityName: null,
   preferredSalesName: null,
@@ -90,6 +116,15 @@ const opportunityDefaults = {
   sourceStrength: "medium",
   readinessToContact: "research",
   clusterId: null,
+  addressState: "IA",
+  addressZip: null,
+  neighborhood: null,
+  leadType: "unknown",
+  jobFit: "low",
+  projectStageStatus: "new",
+  opportunityReason: "unknown",
+  recencyBucket: "older",
+  marketCluster: null,
   currentStage: "New",
   contactedAt: null,
   lastContactedAt: null,
@@ -119,6 +154,17 @@ const opportunityDefaults = {
 } satisfies Pick<
   PlotOpportunity,
   | "assignedMembershipId"
+  | "opportunityIdentityKey"
+  | "propertyIdentityKey"
+  | "permitIdentityKey"
+  | "builderIdentityKey"
+  | "sourceFingerprint"
+  | "sourceRecordVersion"
+  | "lastSourceChangedAt"
+  | "sourceChangeSummary"
+  | "scoreBreakdown"
+  | "requiresReview"
+  | "duplicateRiskScore"
   | "rawSourceName"
   | "normalizedEntityName"
   | "preferredSalesName"
@@ -149,6 +195,15 @@ const opportunityDefaults = {
   | "sourceStrength"
   | "readinessToContact"
   | "clusterId"
+  | "addressState"
+  | "addressZip"
+  | "neighborhood"
+  | "leadType"
+  | "jobFit"
+  | "projectStageStatus"
+  | "opportunityReason"
+  | "recencyBucket"
+  | "marketCluster"
   | "currentStage"
   | "contactedAt"
   | "lastContactedAt"
@@ -218,7 +273,7 @@ function withBuilderIdentity(
   );
   const quality = deriveQualityMeta(identity.contactQualityTier);
 
-  return {
+  const record = {
     ...builder,
     rawSourceName: identity.rawSourceName,
     preferredSalesName: identity.preferredSalesName,
@@ -231,6 +286,11 @@ function withBuilderIdentity(
     contactQualityBand: quality.band,
     contactQualityScore: quality.score,
     preferredContactTarget: identity.preferredContactTarget
+  };
+
+  return {
+    ...record,
+    contractorMetrics: buildContractorMetrics(record)
   };
 }
 
@@ -248,7 +308,7 @@ function withOpportunityIdentity(
   );
   const quality = deriveQualityMeta(identity.contactQualityTier);
 
-  return {
+  return hydrateOpportunityIntelligence({
     ...opportunity,
     rawSourceName: identity.rawSourceName,
     normalizedEntityName: identity.normalizedEntityName,
@@ -288,7 +348,7 @@ function withOpportunityIdentity(
     lastContactResolutionRunAt: null,
     stageHistory: [],
     contactSnapshot: null
-  };
+  });
 }
 
 type BuilderSeedRecord = Omit<
@@ -974,5 +1034,7 @@ export const dashboardSnapshot: DashboardSnapshot = {
   plotQueue: plotOpportunities,
   newestPermits: builders.flatMap((builder) => builder.properties.flatMap((property) => property.permits)).slice(0, 4),
   syncHealth: sources,
-  followUpsDue: plotOpportunities.filter((opportunity) => Boolean(opportunity.nextFollowUpDate))
+  followUpsDue: plotOpportunities.filter((opportunity) => Boolean(opportunity.nextFollowUpDate)),
+  insights: [],
+  savedViews: []
 };
